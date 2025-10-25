@@ -210,7 +210,7 @@ export default function HomePage(): React.JSX.Element {
       <footer className="mt-16 py-8 border-t border-blue-200/50 backdrop-blur-sm bg-white/50">
         <div className="container mx-auto px-4 text-center text-gray-600">
           <p className="text-sm">
-            Built on Base • Powered by OnchainKit • Ready for Smart Contract Integration
+            Built on Base • Build By <b>Gainchainn </b>• Powered by OnchainKit
           </p>
         </div>
       </footer>
