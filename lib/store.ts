@@ -20,6 +20,7 @@ class PredictionStore {
         deadline: Date.now() + 7 * 24 * 60 * 60 * 1000,
         totalYes: 15000,
         totalNo: 8500,
+        maxCapacity: 50000,
         status: 'active',
         creator: '0x1234567890123456789012345678901234567890',
         createdAt: Date.now() - 2 * 24 * 60 * 60 * 1000,
@@ -32,6 +33,7 @@ class PredictionStore {
         deadline: Date.now() + 30 * 24 * 60 * 60 * 1000,
         totalYes: 25000,
         totalNo: 12000,
+        maxCapacity: 100000,
         status: 'active',
         creator: '0x2345678901234567890123456789012345678901',
         createdAt: Date.now() - 5 * 24 * 60 * 60 * 1000,
@@ -44,6 +46,7 @@ class PredictionStore {
         deadline: Date.now() + 14 * 24 * 60 * 60 * 1000,
         totalYes: 42000,
         totalNo: 18000,
+        maxCapacity: 80000,
         status: 'active',
         creator: '0x3456789012345678901234567890123456789012',
         createdAt: Date.now() - 10 * 24 * 60 * 60 * 1000,
@@ -94,16 +97,23 @@ class PredictionStore {
     return this.getAllBets().filter((b: Bet) => b.user.toLowerCase() === userAddress.toLowerCase());
   }
 
-  placeBet(bet: Omit<Bet, 'id' | 'timestamp'>): Bet | null {
+  placeBet(bet: Omit<Bet, 'id' | 'timestamp' | 'claimed'>): Bet | null {
     const prediction: Prediction | undefined = this.predictions.get(bet.predictionId);
     if (!prediction || prediction.status !== 'active' || prediction.deadline < Date.now()) {
       return null;
     }
 
+    // Check capacity limit
+    const currentTotal: number = prediction.totalYes + prediction.totalNo;
+    if (prediction.maxCapacity && currentTotal + bet.amount > prediction.maxCapacity) {
+      return null; // Capacity exceeded
+    }
+
     const newBet: Bet = {
       ...bet,
-      id: Date.now().toString(),
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       timestamp: Date.now(),
+      claimed: false,
     };
 
     // Update prediction totals
@@ -188,8 +198,97 @@ class PredictionStore {
       prediction.status = 'resolved';
       prediction.result = result;
       this.predictions.set(predictionId, prediction);
+      
+      // Calculate payouts for all bets
+      this.calculatePayouts(predictionId);
     }
     return '0x' + Math.random().toString(16).substring(2);
+  }
+
+  // Resolve prediction (admin/creator only)
+  resolvePrediction(predictionId: string, result: 'yes' | 'no', resolverAddress: string): boolean {
+    const prediction: Prediction | undefined = this.predictions.get(predictionId);
+    if (!prediction || prediction.status !== 'active') {
+      return false;
+    }
+
+    // Check if resolver is the creator (in real app, add admin check)
+    if (prediction.creator.toLowerCase() !== resolverAddress.toLowerCase()) {
+      return false;
+    }
+
+    prediction.status = 'resolved';
+    prediction.result = result;
+    this.predictions.set(predictionId, prediction);
+    
+    // Calculate payouts
+    this.calculatePayouts(predictionId);
+    return true;
+  }
+
+  // Calculate payouts for all bets on a resolved prediction
+  private calculatePayouts(predictionId: string): void {
+    const prediction: Prediction | undefined = this.predictions.get(predictionId);
+    if (!prediction || prediction.status !== 'resolved' || !prediction.result) {
+      return;
+    }
+
+    const totalPool: number = prediction.totalYes + prediction.totalNo;
+    const winningPool: number = prediction.result === 'yes' ? prediction.totalYes : prediction.totalNo;
+    
+    if (winningPool === 0) return; // No winners
+
+    // Update all bets with their payout amounts
+    this.getBetsForPrediction(predictionId).forEach((bet: Bet) => {
+      if (bet.choice === prediction.result) {
+        // Winner: gets proportional share of total pool
+        const payout: number = (bet.amount / winningPool) * totalPool;
+        bet.payout = payout;
+        this.bets.set(bet.id, bet);
+      } else {
+        // Loser: payout is 0
+        bet.payout = 0;
+        this.bets.set(bet.id, bet);
+      }
+    });
+  }
+
+  // Claim reward
+  claimReward(betId: string, userAddress: string): { success: boolean; amount: number } {
+    const bet: Bet | undefined = this.bets.get(betId);
+    if (!bet || bet.user.toLowerCase() !== userAddress.toLowerCase()) {
+      return { success: false, amount: 0 };
+    }
+
+    if (bet.claimed) {
+      return { success: false, amount: 0 }; // Already claimed
+    }
+
+    const prediction: Prediction | undefined = this.predictions.get(bet.predictionId);
+    if (!prediction || prediction.status !== 'resolved' || !bet.payout) {
+      return { success: false, amount: 0 };
+    }
+
+    // Mark as claimed
+    bet.claimed = true;
+    this.bets.set(betId, bet);
+
+    return { success: true, amount: bet.payout };
+  }
+
+  // Get potential payout for a bet (before resolution)
+  calculatePotentialPayout(predictionId: string, choice: 'yes' | 'no', amount: number): number {
+    const prediction: Prediction | undefined = this.predictions.get(predictionId);
+    if (!prediction) return 0;
+
+    const totalPool: number = prediction.totalYes + prediction.totalNo + amount;
+    const winningPool: number = choice === 'yes' 
+      ? prediction.totalYes + amount 
+      : prediction.totalNo + amount;
+
+    if (winningPool === 0) return 0;
+
+    return (amount / winningPool) * totalPool;
   }
 }
 

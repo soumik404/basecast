@@ -19,6 +19,7 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
   const [description, setDescription] = useState<string>('');
   const [currency, setCurrency] = useState<'USDC' | 'ETH'>('USDC');
   const [deadline, setDeadline] = useState<string>('');
+  const [maxCapacity, setMaxCapacity] = useState<string>('');
   const [isCreating, setIsCreating] = useState<boolean>(false);
 
   async function handleCreate(): Promise<void> {
@@ -41,6 +42,8 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
     setIsCreating(true);
 
     try {
+      const capacityValue: number | undefined = maxCapacity ? parseFloat(maxCapacity) : undefined;
+      
       const response: Response = await fetch('/api/predictions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -50,6 +53,7 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
           currency,
           deadline: deadlineTimestamp,
           creator: userAddress,
+          maxCapacity: capacityValue,
         }),
       });
 
@@ -62,6 +66,7 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
       setTitle('');
       setDescription('');
       setDeadline('');
+      setMaxCapacity('');
     } catch (error: unknown) {
       const errorMessage: string = error instanceof Error ? error.message : 'Failed to create prediction';
       alert(errorMessage);
@@ -143,6 +148,26 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
                 className="bg-white/80"
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="maxCapacity" className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4" />
+              Max Pool Capacity (Optional)
+            </Label>
+            <Input
+              id="maxCapacity"
+              type="number"
+              placeholder="e.g., 100000 (leave empty for unlimited)"
+              value={maxCapacity}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaxCapacity(e.target.value)}
+              className="bg-white/80"
+              step="100"
+              min="0"
+            />
+            <p className="text-xs text-gray-500">
+              Set a maximum betting pool size. When reached, no more bets can be placed.
+            </p>
           </div>
 
           {!userAddress && (

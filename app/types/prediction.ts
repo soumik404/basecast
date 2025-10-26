@@ -6,6 +6,7 @@ export interface Prediction {
   deadline: number; // UTC timestamp
   totalYes: number;
   totalNo: number;
+  maxCapacity?: number; // Optional max betting pool size
   status: 'active' | 'resolved' | 'cancelled';
   result?: 'yes' | 'no';
   creator: string;
@@ -20,6 +21,7 @@ export interface Bet {
   choice: 'yes' | 'no';
   timestamp: number;
   payout?: number;
+  claimed: boolean; // Has the user claimed their reward?
 }
 
 export interface LeaderboardEntry {

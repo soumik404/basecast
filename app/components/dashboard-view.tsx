@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import type { Bet, Prediction } from '../types/prediction';
-import { TrendingUp, TrendingDown, Activity, DollarSign } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity, DollarSign, Gift } from 'lucide-react';
 
 interface DashboardViewProps {
   userAddress?: string;
@@ -74,6 +75,8 @@ export function DashboardView({ userAddress }: DashboardViewProps): React.JSX.El
           const potentialPayout: number = (bet.amount / winningPool) * totalPool;
           estimatedReturns += potentialPayout;
         }
+      } else if (bet.prediction && bet.prediction.status === 'resolved' && bet.payout && !bet.claimed) {
+        estimatedReturns += bet.payout;
       }
     });
 
@@ -83,6 +86,30 @@ export function DashboardView({ userAddress }: DashboardViewProps): React.JSX.El
       totalStaked,
       estimatedReturns,
     });
+  }
+
+  async function handleClaim(betId: string): Promise<void> {
+    if (!userAddress) return;
+
+    try {
+      const response: Response = await fetch('/api/bets/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ betId, userAddress }),
+      });
+
+      if (!response.ok) {
+        const error: { error: string } = await response.json();
+        throw new Error(error.error);
+      }
+
+      const data: { amount: number } = await response.json();
+      alert(`Successfully claimed ${data.amount} tokens!`);
+      fetchUserBets(); // Refresh bets
+    } catch (error: unknown) {
+      const errorMessage: string = error instanceof Error ? error.message : 'Failed to claim reward';
+      alert(errorMessage);
+    }
   }
 
   if (!userAddress) {
@@ -138,35 +165,67 @@ export function DashboardView({ userAddress }: DashboardViewProps): React.JSX.El
             <p className="text-gray-600 text-center py-8">No bets placed yet</p>
           ) : (
             <div className="space-y-3">
-              {bets.map((bet: BetWithPrediction) => (
-                <motion.div
-                  key={bet.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="p-4 bg-white rounded-lg border border-blue-100 hover:border-blue-300 transition-colors"
-                >
-                  <div className="flex justify-between items-start gap-4">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900">
-                        {bet.prediction?.title || 'Loading...'}
-                      </h3>
-                      <div className="flex gap-2 mt-2">
-                        <Badge className={bet.choice === 'yes' ? 'bg-green-500' : 'bg-red-500'}>
-                          {bet.choice.toUpperCase()}
-                        </Badge>
-                        <Badge variant="outline">
-                          {bet.amount} {bet.prediction?.currency}
-                        </Badge>
+              {bets.map((bet: BetWithPrediction) => {
+                const isWinner: boolean = bet.prediction?.status === 'resolved' && 
+                  bet.prediction?.result === bet.choice;
+                const canClaim: boolean = isWinner && bet.payout !== undefined && bet.payout > 0 && !bet.claimed;
+
+                return (
+                  <motion.div
+                    key={bet.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="p-4 bg-white rounded-lg border border-blue-100 hover:border-blue-300 transition-colors"
+                  >
+                    <div className="flex justify-between items-start gap-4">
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900">
+                          {bet.prediction?.title || 'Loading...'}
+                        </h3>
+                        <div className="flex gap-2 mt-2 flex-wrap">
+                          <Badge className={bet.choice === 'yes' ? 'bg-green-500' : 'bg-red-500'}>
+                            {bet.choice.toUpperCase()}
+                          </Badge>
+                          <Badge variant="outline">
+                            Staked: {bet.amount} {bet.prediction?.currency}
+                          </Badge>
+                          {bet.prediction?.status === 'resolved' && bet.payout !== undefined && (
+                            <Badge className={isWinner ? 'bg-green-600 text-white' : 'bg-gray-400 text-white'}>
+                              {isWinner ? `Won: ${bet.payout.toFixed(2)} ${bet.prediction.currency}` : 'Lost'}
+                            </Badge>
+                          )}
+                          {bet.claimed && (
+                            <Badge className="bg-purple-500 text-white">
+                              ✓ Claimed
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2 items-end">
+                        {bet.prediction?.status === 'active' ? (
+                          <Badge className="bg-blue-500">Active</Badge>
+                        ) : bet.prediction?.status === 'resolved' ? (
+                          <Badge className={isWinner ? 'bg-green-500' : 'bg-red-500'}>
+                            {isWinner ? 'Won' : 'Lost'}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">Resolved</Badge>
+                        )}
+                        {canClaim && (
+                          <Button
+                            onClick={() => handleClaim(bet.id)}
+                            size="sm"
+                            className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white"
+                          >
+                            <Gift className="w-4 h-4 mr-1" />
+                            Claim Reward
+                          </Button>
+                        )}
                       </div>
                     </div>
-                    {bet.prediction?.status === 'active' ? (
-                      <Badge className="bg-blue-500">Active</Badge>
-                    ) : (
-                      <Badge variant="outline">Resolved</Badge>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                );
+              })}
             </div>
           )}
         </CardContent>
