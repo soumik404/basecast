@@ -1,13 +1,59 @@
-import type { Prediction, Bet, LeaderboardEntry } from '../app/types/prediction';
+import type { Prediction, Bet, LeaderboardEntry, Verifier } from '../app/types/prediction';
 
 // In-memory storage (replace with MongoDB/Firebase)
 class PredictionStore {
   private predictions: Map<string, Prediction> = new Map();
   private bets: Map<string, Bet> = new Map();
+  private verifiers: Map<string, Verifier> = new Map();
+  private admins: Set<string> = new Set();
 
   constructor() {
+    // Add default admin (for demo purposes)
+    this.admins.add('0x650157513a9EeE5B149394099231D8e7f00bb39c'.toLowerCase());
+    
+    // Add default verifiers (for demo purposes)
+    this.addVerifier({
+      address: '0xVerifier1234567890123456789012345678901',
+      name: 'Official Verifier',
+      addedAt: Date.now(),
+      addedBy: '0x1234567890123456789012345678901234567890',
+      active: true,
+    });
+    
     // Add some sample predictions
     this.addSampleData();
+  }
+
+  // Verifier Management
+  addVerifier(verifier: Verifier): boolean {
+    this.verifiers.set(verifier.address.toLowerCase(), verifier);
+    return true;
+  }
+
+  removeVerifier(address: string): boolean {
+    return this.verifiers.delete(address.toLowerCase());
+  }
+
+  isVerifier(address: string): boolean {
+    const verifier = this.verifiers.get(address.toLowerCase());
+    return verifier !== undefined && verifier.active;
+  }
+
+  getAllVerifiers(): Verifier[] {
+    return Array.from(this.verifiers.values());
+  }
+
+  getActiveVerifiers(): Verifier[] {
+    return Array.from(this.verifiers.values()).filter((v: Verifier) => v.active);
+  }
+
+  // Admin Management
+  isAdmin(address: string): boolean {
+    return this.admins.has(address.toLowerCase());
+  }
+
+  addAdmin(address: string): void {
+    this.admins.add(address.toLowerCase());
   }
 
   private addSampleData(): void {
@@ -64,6 +110,12 @@ class PredictionStore {
   getActivePredictions(): Prediction[] {
     return this.getAllPredictions().filter(
       (p: Prediction) => p.status === 'active' && p.deadline > Date.now()
+    );
+  }
+
+  getPendingVerificationPredictions(): Prediction[] {
+    return this.getAllPredictions().filter(
+      (p: Prediction) => p.status === 'pending_verification'
     );
   }
 
@@ -168,62 +220,65 @@ class PredictionStore {
     return leaderboard.sort((a: LeaderboardEntry, b: LeaderboardEntry) => b.totalProfit - a.totalProfit);
   }
 
-  // Mock smart contract functions
-  async createPredictionContract(
-    title: string,
-    description: string,
-    token: 'USDC' | 'ETH',
-    deadline: number
-  ): Promise<string> {
-    // Placeholder for smart contract integration
-    console.log('Smart contract call: createPrediction', { title, description, token, deadline });
-    return '0x' + Math.random().toString(16).substring(2);
-  }
-
-  async placeBetContract(
-    predictionId: string,
-    option: 'yes' | 'no',
-    amount: number
-  ): Promise<string> {
-    // Placeholder for smart contract integration
-    console.log('Smart contract call: placeBet', { predictionId, option, amount });
-    return '0x' + Math.random().toString(16).substring(2);
-  }
-
-  async resolveEventContract(predictionId: string, result: 'yes' | 'no'): Promise<string> {
-    // Placeholder for smart contract integration
-    console.log('Smart contract call: resolveEvent', { predictionId, result });
-    const prediction: Prediction | undefined = this.predictions.get(predictionId);
-    if (prediction) {
-      prediction.status = 'resolved';
-      prediction.result = result;
-      this.predictions.set(predictionId, prediction);
-      
-      // Calculate payouts for all bets
-      this.calculatePayouts(predictionId);
-    }
-    return '0x' + Math.random().toString(16).substring(2);
-  }
-
-  // Resolve prediction (admin/creator only)
-  resolvePrediction(predictionId: string, result: 'yes' | 'no', resolverAddress: string): boolean {
+  // TWO-STEP RESOLUTION: Step 1 - Propose Result (Creator only)
+  proposeResult(predictionId: string, result: 'yes' | 'no', proposerAddress: string): boolean {
     const prediction: Prediction | undefined = this.predictions.get(predictionId);
     if (!prediction || prediction.status !== 'active') {
       return false;
     }
 
-    // Check if resolver is the creator (in real app, add admin check)
-    if (prediction.creator.toLowerCase() !== resolverAddress.toLowerCase()) {
+    // Check if proposer is the creator
+    if (prediction.creator.toLowerCase() !== proposerAddress.toLowerCase()) {
       return false;
     }
 
-    prediction.status = 'resolved';
-    prediction.result = result;
+    // Check if deadline has passed
+    if (prediction.deadline > Date.now()) {
+      return false; // Cannot propose before deadline
+    }
+
+    prediction.status = 'pending_verification';
+    prediction.proposedResult = result;
+    prediction.proposedBy = proposerAddress;
+    prediction.proposedAt = Date.now();
     this.predictions.set(predictionId, prediction);
-    
-    // Calculate payouts
-    this.calculatePayouts(predictionId);
     return true;
+  }
+
+  // TWO-STEP RESOLUTION: Step 2 - Verify Result (Verifier only)
+  verifyResult(predictionId: string, approve: boolean, verifierAddress: string, rejectionReason?: string): boolean {
+    const prediction: Prediction | undefined = this.predictions.get(predictionId);
+    if (!prediction || prediction.status !== 'pending_verification') {
+      return false;
+    }
+
+    // Check if address is a verified verifier
+    if (!this.isVerifier(verifierAddress)) {
+      return false;
+    }
+
+    if (approve) {
+      // Approve: Finalize the result
+      prediction.status = 'resolved';
+      prediction.result = prediction.proposedResult;
+      prediction.verifiedBy = verifierAddress;
+      prediction.verifiedAt = Date.now();
+      this.predictions.set(predictionId, prediction);
+      
+      // Calculate payouts
+      this.calculatePayouts(predictionId);
+      return true;
+    } else {
+      // Reject: Send back to active state
+      prediction.status = 'active';
+      prediction.rejectionReason = rejectionReason || 'Result rejected by verifier';
+      // Clear proposal data
+      delete prediction.proposedResult;
+      delete prediction.proposedBy;
+      delete prediction.proposedAt;
+      this.predictions.set(predictionId, prediction);
+      return true;
+    }
   }
 
   // Calculate payouts for all bets on a resolved prediction
@@ -289,6 +344,40 @@ class PredictionStore {
     if (winningPool === 0) return 0;
 
     return (amount / winningPool) * totalPool;
+  }
+
+  // Mock smart contract functions
+  async createPredictionContract(
+    title: string,
+    description: string,
+    token: 'USDC' | 'ETH',
+    deadline: number
+  ): Promise<string> {
+    // Placeholder for smart contract integration
+    console.log('Smart contract call: createPrediction', { title, description, token, deadline });
+    return '0x' + Math.random().toString(16).substring(2);
+  }
+
+  async placeBetContract(
+    predictionId: string,
+    option: 'yes' | 'no',
+    amount: number
+  ): Promise<string> {
+    // Placeholder for smart contract integration
+    console.log('Smart contract call: placeBet', { predictionId, option, amount });
+    return '0x' + Math.random().toString(16).substring(2);
+  }
+
+  async proposeResultContract(predictionId: string, result: 'yes' | 'no'): Promise<string> {
+    // Placeholder for smart contract integration
+    console.log('Smart contract call: proposeResult', { predictionId, result });
+    return '0x' + Math.random().toString(16).substring(2);
+  }
+
+  async verifyResultContract(predictionId: string, approve: boolean): Promise<string> {
+    // Placeholder for smart contract integration
+    console.log('Smart contract call: verifyResult', { predictionId, approve });
+    return '0x' + Math.random().toString(16).substring(2);
   }
 }
 

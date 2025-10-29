@@ -9,18 +9,32 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar, DollarSign, FileText } from 'lucide-react';
+import { useWriteContract } from 'wagmi';
+import { base } from 'viem/chains';
+import { getAddress } from "viem";
 
+// import { parseEther } from 'viem';
+import { PREDICTION_MARKET_ADDRESS } from '@/contracts/config';
+import { Abi } from 'viem';
+import PredictionMarketABI from '../../contracts/PredictionMarket.json';
 interface CreatePredictionViewProps {
   userAddress?: string;
 }
 
 export function CreatePredictionView({ userAddress }: CreatePredictionViewProps): React.JSX.Element {
   const [title, setTitle] = useState<string>('');
+
+const TOKEN_ADDRESSES: Record<'ETH' | 'USDC', `0x${string}`> = {
+  ETH: '0x0000000000000000000000000000000000000000', // native token placeholder
+  USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bDA02913', // Base mainnet USDC
+};
+
   const [description, setDescription] = useState<string>('');
   const [currency, setCurrency] = useState<'USDC' | 'ETH'>('USDC');
   const [deadline, setDeadline] = useState<string>('');
   const [maxCapacity, setMaxCapacity] = useState<string>('');
   const [isCreating, setIsCreating] = useState<boolean>(false);
+  const { writeContractAsync } = useWriteContract(); // ✅ async version
 
   async function handleCreate(): Promise<void> {
     if (!userAddress) {
@@ -33,8 +47,8 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
       return;
     }
 
-    const deadlineTimestamp: number = new Date(deadline).getTime();
-    if (deadlineTimestamp < Date.now()) {
+    const deadlineTimestamp = Math.floor(new Date(deadline).getTime() / 1000);
+    if (deadlineTimestamp < Date.now() / 1000) {
       alert('Deadline must be in the future');
       return;
     }
@@ -42,9 +56,21 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
     setIsCreating(true);
 
     try {
-      const capacityValue: number | undefined = maxCapacity ? parseFloat(maxCapacity) : undefined;
-      
-      const response: Response = await fetch('/api/predictions', {
+      // --- 🧠 Step 1: Send TX from user wallet (user pays gas)
+      const txHash = await writeContractAsync({
+        address: PREDICTION_MARKET_ADDRESS,
+        abi: PredictionMarketABI.abi as Abi,
+        functionName: 'createPrediction',
+        args: [title, description, getAddress(TOKEN_ADDRESSES[currency]), BigInt(deadlineTimestamp), BigInt(maxCapacity || 0)],
+        chain: base,
+      });
+
+      console.log('Transaction sent:', txHash);
+      alert(`✅ Prediction created! TX: ${txHash}`);
+
+      // --- 🧠 Step 2: Save details to backend for display
+      const capacityValue = maxCapacity ? parseFloat(maxCapacity) : undefined;
+      await fetch('/api/predictions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -57,19 +83,13 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
         }),
       });
 
-      if (!response.ok) {
-        const error: { error: string } = await response.json();
-        throw new Error(error.error || 'Failed to create prediction');
-      }
-
-      alert('Prediction created successfully!');
       setTitle('');
       setDescription('');
       setDeadline('');
       setMaxCapacity('');
-    } catch (error: unknown) {
-      const errorMessage: string = error instanceof Error ? error.message : 'Failed to create prediction';
-      alert(errorMessage);
+    } catch (error: any) {
+      console.error('❌ Error creating prediction:', error);
+      alert(error.message || 'Failed to create prediction');
     } finally {
       setIsCreating(false);
     }
@@ -93,6 +113,7 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
         </CardHeader>
 
         <CardContent className="space-y-6">
+          {/* 🎯 all your UI unchanged */}
           <div className="space-y-2">
             <Label htmlFor="title" className="flex items-center gap-2">
               <FileText className="w-4 h-4" />
@@ -102,7 +123,7 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
               id="title"
               placeholder="e.g., ETH will reach $5000 by end of year"
               value={title}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
+              onChange={(e) => setTitle(e.target.value)}
               className="bg-white/80"
             />
           </div>
@@ -113,7 +134,7 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
               id="description"
               placeholder="Provide details about this prediction..."
               value={description}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
+              onChange={(e) => setDescription(e.target.value)}
               className="bg-white/80 min-h-[100px]"
             />
           </div>
@@ -124,7 +145,7 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
                 <DollarSign className="w-4 h-4" />
                 Betting Currency
               </Label>
-              <Select value={currency} onValueChange={(value: string) => setCurrency(value as 'USDC' | 'ETH')}>
+              <Select value={currency} onValueChange={(v) => setCurrency(v as 'USDC' | 'ETH')}>
                 <SelectTrigger id="currency" className="bg-white/80">
                   <SelectValue />
                 </SelectTrigger>
@@ -144,7 +165,7 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
                 id="deadline"
                 type="datetime-local"
                 value={deadline}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDeadline(e.target.value)}
+                onChange={(e) => setDeadline(e.target.value)}
                 className="bg-white/80"
               />
             </div>
@@ -160,7 +181,7 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
               type="number"
               placeholder="e.g., 100000 (leave empty for unlimited)"
               value={maxCapacity}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaxCapacity(e.target.value)}
+              onChange={(e) => setMaxCapacity(e.target.value)}
               className="bg-white/80"
               step="100"
               min="0"

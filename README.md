@@ -1,159 +1,171 @@
-# Waitlist Mini App Quickstart
+# 🎯 Base Prediction Market
 
-This is a demo Mini App application built using OnchainKit and the Farcaster SDK. Build a waitlist sign-up mini app for your company that can be published to the Base app and Farcaster. 
+A decentralized prediction market built on Base with gasless transactions, two-step verification, and secure payouts.
 
-> [!IMPORTANT]  
-> Before interacting with this demo, please review our [disclaimer](#disclaimer) — there are **no official tokens or apps** associated with Cubey, Base, or Coinbase.
+## ✨ Features
 
-## Prerequisites
+- 🔗 **Base Blockchain** - Built on Base for fast, low-cost transactions
+- ⛽ **Gasless Transactions** - Users don't pay gas fees (powered by Base Paymaster)
+- 🔐 **Two-Step Verification** - Creators propose, verifiers confirm results
+- 💰 **Fair Payouts** - Proportional reward distribution to winners
+- 📊 **Live Statistics** - Real-time pool updates and potential earnings
+- 🎨 **Base-Themed UI** - Beautiful glassmorphism design
+- 📱 **Mobile Responsive** - Works seamlessly on all devices
+- 🔒 **Smart Contract Security** - Audited OpenZeppelin contracts
 
-Before getting started, make sure you have:
+## 🚀 Quick Start
 
-* Base app account
-* A [Farcaster](https://farcaster.xyz/) account
-* [Vercel](https://vercel.com/) account for hosting the application
-* [Coinbase Developer Platform](https://portal.cdp.coinbase.com/) Client API Key
+### For Users
 
-## Getting Started
+1. Visit the app (link coming soon)
+2. Connect your Base wallet (Coinbase Wallet or MetaMask)
+3. Get test USDC or ETH from the faucet
+4. Create predictions or place bets
+5. Claim rewards when you win!
 
-### 1. Clone this repository 
+### For Developers
 
+See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for complete setup instructions.
+
+**Quick Deploy:**
 ```bash
-git clone https://github.com/base/demos.git
-```
-
-### 2. Install dependencies:
-
-```bash
-cd demos/minikit/waitlist-mini-app-qs
+# Install dependencies
 npm install
-```
 
-### 3. Configure environment variables
+# Set up environment
+cp .env.example .env
+# Edit .env with your details
 
-Create a `.env.local` file and add your environment variables:
+# Compile contracts
+npm run compile
 
-```bash
-NEXT_PUBLIC_PROJECT_NAME="Your App Name"
-NEXT_PUBLIC_ONCHAINKIT_API_KEY=<Replace-WITH-YOUR-CDP-API-KEY>
-NEXT_PUBLIC_URL=
-```
+# Deploy to Base Sepolia
+npm run deploy:sepolia
 
-### 4. Run locally:
-
-```bash
+# Start frontend
 npm run dev
 ```
 
-## Customization
+## 📖 How It Works
 
-### Update Manifest Configuration
+### 1. Create a Prediction
+Anyone can create a prediction with:
+- Title and description
+- Betting currency (USDC or ETH)
+- Deadline for betting
+- Optional max capacity
 
-The `minikit.config.ts` file configures your manifest located at `app/.well-known/farcaster.json`.
+### 2. Place Bets
+Users bet "Yes" or "No" by staking tokens:
+- See potential payouts before betting
+- Track live pool percentages
+- Betting closes at deadline or capacity
 
-**Skip the `accountAssociation` object for now.**
+### 3. Two-Step Resolution
+**Step 1:** Creator proposes result after deadline
+**Step 2:** Verified resolver confirms or rejects
+**Result:** Payouts calculated and distributed
 
-To personalize your app, change the `name`, `subtitle`, and `description` fields and add images to your `/public` folder. Then update their URLs in the file.
-
-## Deployment
-
-### 1. Deploy to Vercel
-
-```bash
-vercel --prod
+### 4. Claim Rewards
+Winners claim proportional rewards from total pool:
+```
+Your Reward = (Your Stake / Winning Pool) × Total Pool
 ```
 
-You should have a URL deployed to a domain similar to: `https://your-vercel-project-name.vercel.app/`
+## 🛠️ Tech Stack
 
-### 2. Update environment variables
+**Smart Contracts:**
+- Solidity 0.8.20
+- OpenZeppelin Contracts
+- Hardhat for deployment
 
-Add your production URL to your local `.env` file:
+**Frontend:**
+- Next.js 15
+- React 19
+- TypeScript
+- Tailwind CSS + shadcn/ui
+- Framer Motion animations
+- Recharts for visualizations
 
-```bash
-NEXT_PUBLIC_PROJECT_NAME="Your App Name"
-NEXT_PUBLIC_ONCHAINKIT_API_KEY=<Replace-WITH-YOUR-CDP-API-KEY>
-NEXT_PUBLIC_URL=https://your-vercel-project-name.vercel.app/
+**Blockchain:**
+- Base (Ethereum L2)
+- Wagmi + Viem for Web3
+- OnchainKit by Coinbase
+- Base Paymaster for gasless txs
+
+## 📁 Project Structure
+
+```
+base-prediction-market/
+├── contracts/              # Solidity smart contracts
+│   ├── PredictionMarket.sol
+│   └── MockUSDC.sol
+├── scripts/               # Deployment scripts
+│   ├── deploy.ts
+│   └── check-balance.ts
+├── src/
+│   ├── app/              # Next.js pages
+│   ├── components/       # React components
+│   ├── hooks/           # Custom hooks (useContract)
+│   ├── lib/             # Utilities and configs
+│   └── types/           # TypeScript types
+├── hardhat.config.ts    # Hardhat configuration
+└── DEPLOYMENT_GUIDE.md  # Complete setup guide
 ```
 
-### 3. Upload environment variables to Vercel
+## 🔐 Security Features
 
-Add environment variables to your production environment:
+- ✅ ReentrancyGuard on all critical functions
+- ✅ Verifier whitelist system
+- ✅ Two-step resolution process
+- ✅ Safe ERC20 token handling
+- ✅ Owner-only admin functions
+- ✅ Emergency withdrawal mechanism
+- ✅ Platform fee (2%) to prevent spam
 
-```bash
-vercel env add NEXT_PUBLIC_PROJECT_NAME production
-vercel env add NEXT_PUBLIC_ONCHAINKIT_API_KEY production
-vercel env add NEXT_PUBLIC_URL production
-```
+## 🌐 Live Contracts
 
-## Account Association
+### Base Sepolia Testnet
+- **PredictionMarket:** `Coming Soon`
+- **MockUSDC:** `Coming Soon`
 
-### 1. Sign Your Manifest
+### Base Mainnet
+- **PredictionMarket:** `Coming Soon`
+- **USDC:** `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
 
-1. Navigate to [Farcaster Manifest tool](https://farcaster.xyz/~/developers/mini-apps/manifest)
-2. Paste your domain in the form field (ex: your-vercel-project-name.vercel.app)
-3. Click the `Generate account association` button and follow the on-screen instructions for signing with your Farcaster wallet
-4. Copy the `accountAssociation` object
+## 📚 Documentation
 
-### 2. Update Configuration
+- [Deployment Guide](./DEPLOYMENT_GUIDE.md) - Complete setup instructions
+- [Smart Contract Docs](./contracts/README.md) - Contract functions and events
+- [API Reference](./docs/API.md) - Frontend hooks and utilities
 
-Update your `minikit.config.ts` file to include the `accountAssociation` object:
+## 🤝 Contributing
 
-```ts
-export const minikitConfig = {
-    accountAssociation: {
-        "header": "your-header-here",
-        "payload": "your-payload-here",
-        "signature": "your-signature-here"
-    },
-    frame: {
-        // ... rest of your frame configuration
-    },
-}
-```
+Contributions welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) first.
 
-### 3. Deploy Updates
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request
 
-```bash
-vercel --prod
-```
+## 📜 License
 
-## Testing and Publishing
+MIT License - see [LICENSE](./LICENSE) for details
 
-### 1. Preview Your App
+## 🆘 Support
 
-Go to [base.dev/preview](https://base.dev/preview) to validate your app:
+- [Open an Issue](https://github.com/Soumik404/base-prediction-market/issues)
+- [Join Discord](https://discord.gg/buildonbase)
+- [Base Documentation](https://docs.base.org)
 
-1. Add your app URL to view the embeds and click the launch button to verify the app launches as expected
-2. Use the "Account association" tab to verify the association credentials were created correctly
-3. Use the "Metadata" tab to see the metadata added from the manifest and identify any missing fields
+## 🎉 Acknowledgments
 
-### 2. Publish to Base App
-
-To publish your app, create a post in the Base app with your app's URL.
-
-## Learn More
-
-For detailed step-by-step instructions, see the [Create a Mini App tutorial](https://docs.base.org/docs/mini-apps/quickstart/create-new-miniapp/) in the Base documentation.
-
+- Built on [Base](https://base.org)
+- Powered by [OnchainKit](https://onchainkit.xyz)
+- UI components by [shadcn/ui](https://ui.shadcn.com)
+- Smart contracts by [OpenZeppelin](https://openzeppelin.com/contracts)
 
 ---
 
-## Disclaimer  
-
-This project is a **demo application** created by the **Base / Coinbase Developer Relations team** for **educational and demonstration purposes only**.  
-
-**There is no token, cryptocurrency, or investment product associated with Cubey, Base, or Coinbase.**  
-
-Any social media pages, tokens, or applications claiming to be affiliated with, endorsed by, or officially connected to Cubey, Base, or Coinbase are **unauthorized and fraudulent**.  
-
-We do **not** endorse or support any third-party tokens, apps, or projects using the Cubey name or branding.  
-
-> [!WARNING]
-> Do **not** purchase, trade, or interact with any tokens or applications claiming affiliation with Coinbase, Base, or Cubey.  
-> Coinbase and Base will never issue a token or ask you to connect your wallet for this demo.  
-
-For official Base developer resources, please visit:  
-- [https://base.org](https://base.org)  
-- [https://docs.base.org](https://docs.base.org)  
-
----
+**Built with ❤️ on Base**

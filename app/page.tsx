@@ -9,8 +9,15 @@ import { MarketsView } from './components/markets-view';
 import { CreatePredictionView } from './components/create-prediction-view';
 import { DashboardView } from './components/dashboard-view';
 import { LeaderboardView } from './components/leaderboard-view';
-import { TrendingUp, PlusCircle, BarChart3, Trophy } from 'lucide-react';
+import { VerifierView } from './components/verifier-view';
+import { TrendingUp, PlusCircle, BarChart3, Trophy, Shield } from 'lucide-react';
 import { sdk } from "@farcaster/miniapp-sdk";
+import { useContract } from '@/hooks/useContract';
+import { usePublicClient } from 'wagmi';
+import { publicClient } from "../app/utils/publicClient";
+
+import PredictionMarketABI from '@/contracts/PredictionMarket.json';
+import { PREDICTION_MARKET_ADDRESS } from '@/contracts/config';
 
 export default function HomePage(): React.JSX.Element {
     useEffect(() => {
@@ -48,6 +55,52 @@ export default function HomePage(): React.JSX.Element {
     }, []);
   const { address } = useAccount();
   const [activeTab, setActiveTab] = useState<string>('markets');
+  const [isVerifier, setIsVerifier] = useState<boolean>(false);
+  const [isOwner, setIsOwner] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  // Check if connected address is verifier or owner
+  useEffect(() => {
+    const checkRole = async () => {
+      if (!address || !publicClient) {
+        setIsVerifier(false);
+        setIsOwner(false);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // Check if user is verifier
+        const verifierStatus = await publicClient.readContract({
+          address: PREDICTION_MARKET_ADDRESS,
+          abi: PredictionMarketABI.abi,
+          functionName: 'verifiers',
+          args: [address],
+        }) as boolean;
+
+        // Check if user is owner
+        const ownerAddress = await publicClient.readContract({
+          address: PREDICTION_MARKET_ADDRESS,
+          abi: PredictionMarketABI.abi,
+          functionName: 'owner',
+        }) as string;
+
+        setIsVerifier(verifierStatus);
+        setIsOwner(ownerAddress.toLowerCase() === address.toLowerCase());
+      } catch (error) {
+        console.error('Error checking role:', error);
+        setIsVerifier(false);
+        setIsOwner(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkRole();
+  }, [address, publicClient]);
+
+  // Show verifier tab only if user is verifier or owner
+  const showVerifierTab = isVerifier || isOwner;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-100">
@@ -90,7 +143,7 @@ export default function HomePage(): React.JSX.Element {
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           {/* Tab Navigation */}
-          <TabsList className="grid w-full grid-cols-4 mb-8 bg-white/80 backdrop-blur-sm border border-blue-200/50 p-1 rounded-xl shadow-lg">
+          <TabsList className={`grid w-full ${showVerifierTab ? 'grid-cols-5' : 'grid-cols-4'} mb-8 bg-white/80 backdrop-blur-sm border border-blue-200/50 p-1 rounded-xl shadow-lg`}>
             <TabsTrigger
               value="markets"
               className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-blue-600 data-[state=active]:text-white rounded-lg transition-all"
@@ -119,6 +172,15 @@ export default function HomePage(): React.JSX.Element {
               <Trophy className="w-4 h-4" />
               <span className="hidden sm:inline">Leaderboard</span>
             </TabsTrigger>
+            {showVerifierTab && (
+              <TabsTrigger
+                value="verifier"
+                className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-yellow-500 data-[state=active]:to-yellow-600 data-[state=active]:text-white rounded-lg transition-all"
+              >
+                <Shield className="w-4 h-4" />
+                <span className="hidden sm:inline">Verifier</span>
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Tab Content */}
@@ -202,6 +264,33 @@ export default function HomePage(): React.JSX.Element {
                 <LeaderboardView />
               </motion.div>
             </TabsContent>
+
+            {showVerifierTab && (
+              <TabsContent value="verifier" className="mt-0">
+                <motion.div
+                  key="verifier"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="mb-6">
+                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                      Verifier Dashboard
+                      {isOwner && (
+                        <span className="ml-3 text-sm font-normal px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full">
+                          Admin
+                        </span>
+                      )}
+                    </h2>
+                    <p className="text-gray-600">
+                      Review and approve proposed prediction results
+                    </p>
+                  </div>
+                  <VerifierView userAddress={address} />
+                </motion.div>
+              </TabsContent>
+            )}
           </AnimatePresence>
         </Tabs>
       </main>
@@ -210,7 +299,7 @@ export default function HomePage(): React.JSX.Element {
       <footer className="mt-16 py-8 border-t border-blue-200/50 backdrop-blur-sm bg-white/50">
         <div className="container mx-auto px-4 text-center text-gray-600">
           <p className="text-sm">
-            Built on Base • Build By <b>Gainchainn </b>• Powered by OnchainKit
+            Built on Base • Build By Gainchainn • Powered by OnchainKit 
           </p>
         </div>
       </footer>

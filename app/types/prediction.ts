@@ -7,8 +7,14 @@ export interface Prediction {
   totalYes: number;
   totalNo: number;
   maxCapacity?: number; // Optional max betting pool size
-  status: 'active' | 'resolved' | 'cancelled';
+  status: 'active' | 'pending_verification' | 'resolved' | 'rejected' | 'cancelled';
   result?: 'yes' | 'no';
+  proposedResult?: 'yes' | 'no'; // Creator's proposed result (before verification)
+  proposedBy?: string; // Address that proposed the result
+  proposedAt?: number; // Timestamp of proposal
+  verifiedBy?: string; // Address that verified the result
+  verifiedAt?: number; // Timestamp of verification
+  rejectionReason?: string; // If rejected, why?
   creator: string;
   createdAt: number;
 }
@@ -29,4 +35,12 @@ export interface LeaderboardEntry {
   totalProfit: number;
   totalBets: number;
   winRate: number;
+}
+
+export interface Verifier {
+  address: string;
+  name?: string;
+  addedAt: number;
+  addedBy: string; // Admin who added this verifier
+  active: boolean;
 }

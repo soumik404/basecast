@@ -15,9 +15,9 @@ export const minikitConfig = {
   },
   miniapp: {
     version: "1",
-    name: "Cubey", 
-    subtitle: "Your AI Ad Companion", 
-    description: "Ads",
+    name: "BaseCas", 
+    subtitle: "Predict, Bet, and Earn on Base", 
+    description: "BaseCast is a decentralized prediction market",
     screenshotUrls: [`${ROOT_URL}/screenshot-portrait.png`],
     iconUrl: `${ROOT_URL}/blue-icon.png`,
     splashImageUrl: `${ROOT_URL}/blue-hero.png`,
@@ -25,12 +25,16 @@ export const minikitConfig = {
     homeUrl: ROOT_URL,
     webhookUrl: `${ROOT_URL}/api/webhook`,
     primaryCategory: "social",
-    tags: ["marketing", "ads", "quickstart", "waitlist"],
+    tags: ["prediction", "crypto", "base", "market"],
     heroImageUrl: `${ROOT_URL}/blue-hero.png`, 
-    tagline: "",
-    ogTitle: "",
-    ogDescription: "",
+    tagline: "Make your predictions count ",
+    ogTitle: "BaseCast Predictions",
+    ogDescription: "oin the decentralized prediction market on Base. Create, vote, and earn rewards for accurate calls.",
     ogImageUrl: `${ROOT_URL}/blue-hero.png`,
+    "noindex": false
   },
+  "baseBuilder": {
+    "ownerAddress": "0xc775185C61448F85B2530cc96Ff1297C45AfbF48"
+  }
 } as const;
 

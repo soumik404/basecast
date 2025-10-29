@@ -31,7 +31,8 @@
     "lib": [
       "dom",
       "dom.iterable",
-      "esnext"
+      "esnext",
+      "ES2020"
     ],
     "allowJs": true,
     "skipLibCheck": true,
@@ -66,7 +67,7 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts"
-  ],
+, "app/.well-known/farcaster.json/test.tsx"  ],
   "exclude": [
     "node_modules"
   ]

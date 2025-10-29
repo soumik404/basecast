@@ -22,6 +22,7 @@ export function PredictionCard({ prediction, onBet, userAddress }: PredictionCar
   const [selectedChoice, setSelectedChoice] = useState<'yes' | 'no' | null>(null);
   const [potentialPayout, setPotentialPayout] = useState<number>(0);
   const [isResolved, setIsResolved] = useState<boolean>(prediction.status === 'resolved');
+  const [isPendingVerification, setIsPendingVerification] = useState<boolean>(prediction.status === 'pending_verification');
 
   const totalPool: number = prediction.totalYes + prediction.totalNo;
   const yesPercentage: number = totalPool > 0 ? (prediction.totalYes / totalPool) * 100 : 50;
@@ -78,20 +79,20 @@ export function PredictionCard({ prediction, onBet, userAddress }: PredictionCar
     }
   }
 
-  async function handleResolve(result: 'yes' | 'no'): Promise<void> {
+  async function handleProposeResult(result: 'yes' | 'no'): Promise<void> {
     if (!userAddress || !isCreator) return;
 
-    const confirm: boolean = window.confirm(`Are you sure you want to resolve this prediction as "${result.toUpperCase()}"? This cannot be undone.`);
+    const confirm: boolean = window.confirm(`Propose "${result.toUpperCase()}" as the result? This will be sent to verifiers for approval.`);
     if (!confirm) return;
 
     try {
-      const response: Response = await fetch('/api/predictions/resolve', {
+      const response: Response = await fetch('/api/predictions/propose', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           predictionId: prediction.id, 
           result, 
-          resolverAddress: userAddress 
+          proposerAddress: userAddress 
         }),
       });
 
@@ -100,11 +101,11 @@ export function PredictionCard({ prediction, onBet, userAddress }: PredictionCar
         throw new Error(error.error);
       }
 
-      setIsResolved(true);
-      alert(`Prediction resolved as "${result.toUpperCase()}"!`);
+      setIsPendingVerification(true);
+      alert(`Result proposed as "${result.toUpperCase()}"! Waiting for verifier approval.`);
       window.location.reload();
     } catch (error: unknown) {
-      const errorMessage: string = error instanceof Error ? error.message : 'Failed to resolve prediction';
+      const errorMessage: string = error instanceof Error ? error.message : 'Failed to propose result';
       alert(errorMessage);
     }
   }
@@ -153,7 +154,17 @@ export function PredictionCard({ prediction, onBet, userAddress }: PredictionCar
           {/* Status Badges */}
           {isResolved && prediction.result && (
             <Badge className="bg-purple-500 text-white mt-2">
-              Resolved: {prediction.result.toUpperCase()} wins!
+              ✓ Resolved: {prediction.result.toUpperCase()} wins!
+            </Badge>
+          )}
+          {isPendingVerification && prediction.proposedResult && (
+            <Badge className="bg-yellow-500 text-white mt-2">
+              ⏳ Pending Verification: {prediction.proposedResult.toUpperCase()} proposed
+            </Badge>
+          )}
+          {prediction.rejectionReason && (
+            <Badge className="bg-red-500 text-white mt-2">
+              ⚠️ Rejected: {prediction.rejectionReason}
             </Badge>
           )}
           {isFull && !isResolved && (
@@ -196,29 +207,42 @@ export function PredictionCard({ prediction, onBet, userAddress }: PredictionCar
             </div>
           </div>
 
-          {/* Resolve Buttons (Creator Only) */}
-          {isCreator && !isResolved && prediction.status === 'active' && (
+          {/* Propose Result Buttons (Creator Only) */}
+          {isCreator && !isResolved && !isPendingVerification && prediction.status === 'active' && prediction.deadline < Date.now() && (
             <div className="space-y-2 pt-4 border-t border-blue-100">
-              <p className="text-sm font-medium text-gray-700">You are the creator - resolve this prediction:</p>
+              <p className="text-sm font-medium text-gray-700">You are the creator - propose result:</p>
+              <p className="text-xs text-gray-500">A verifier will need to approve your proposal before payouts are distributed.</p>
               <div className="grid grid-cols-2 gap-2">
                 <Button
-                  onClick={() => handleResolve('yes')}
+                  onClick={() => handleProposeResult('yes')}
                   className="bg-green-600 hover:bg-green-700 text-white"
                 >
-                  Resolve as YES
+                  Propose YES
                 </Button>
                 <Button
-                  onClick={() => handleResolve('no')}
+                  onClick={() => handleProposeResult('no')}
                   className="bg-red-600 hover:bg-red-700 text-white"
                 >
-                  Resolve as NO
+                  Propose NO
                 </Button>
+              </div>
+            </div>
+          )}
+          
+          {/* Pending Verification Status (Creator) */}
+          {isCreator && isPendingVerification && (
+            <div className="space-y-2 pt-4 border-t border-blue-100">
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm font-medium text-yellow-800">⏳ Waiting for Verifier Approval</p>
+                <p className="text-xs text-yellow-600 mt-1">
+                  You proposed: <span className="font-bold">{prediction.proposedResult?.toUpperCase()}</span>
+                </p>
               </div>
             </div>
           )}
 
           {/* Betting Interface */}
-          {userAddress && onBet && !isResolved && prediction.status === 'active' && (
+          {userAddress && onBet && !isResolved && !isPendingVerification && prediction.status === 'active' && (
             <div className="space-y-3 pt-4 border-t border-blue-100">
               <div className="flex gap-2">
                 <Input

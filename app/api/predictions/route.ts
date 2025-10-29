@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { store } from '@/lib/store';
 import type { Prediction } from '../../types/prediction';
-
 export async function GET(): Promise<NextResponse> {
   try {
     const predictions: Prediction[] = store.getActivePredictions();
