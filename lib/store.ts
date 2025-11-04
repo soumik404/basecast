@@ -21,7 +21,7 @@ class PredictionStore {
     });
     
     // Add some sample predictions
-    this.addSampleData();
+    
   }
 
   // Verifier Management
@@ -56,51 +56,7 @@ class PredictionStore {
     this.admins.add(address.toLowerCase());
   }
 
-  private addSampleData(): void {
-    const samplePredictions: Prediction[] = [
-      {
-        id: '1',
-        title: 'ETH will reach $4000 by end of month',
-        description: 'Ethereum price will reach or exceed $4000 USD before the end of the current month.',
-        currency: 'USDC',
-        deadline: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        totalYes: 15000,
-        totalNo: 8500,
-        maxCapacity: 50000,
-        status: 'active',
-        creator: '0x1234567890123456789012345678901234567890',
-        createdAt: Date.now() - 2 * 24 * 60 * 60 * 1000,
-      },
-      {
-        id: '2',
-        title: 'Base will have 10M+ active users this year',
-        description: 'Base blockchain will surpass 10 million monthly active users before December 31.',
-        currency: 'ETH',
-        deadline: Date.now() + 30 * 24 * 60 * 60 * 1000,
-        totalYes: 25000,
-        totalNo: 12000,
-        maxCapacity: 100000,
-        status: 'active',
-        creator: '0x2345678901234567890123456789012345678901',
-        createdAt: Date.now() - 5 * 24 * 60 * 60 * 1000,
-      },
-      {
-        id: '3',
-        title: 'Bitcoin halving will happen in April',
-        description: 'The next Bitcoin halving event will occur during the month of April.',
-        currency: 'USDC',
-        deadline: Date.now() + 14 * 24 * 60 * 60 * 1000,
-        totalYes: 42000,
-        totalNo: 18000,
-        maxCapacity: 80000,
-        status: 'active',
-        creator: '0x3456789012345678901234567890123456789012',
-        createdAt: Date.now() - 10 * 24 * 60 * 60 * 1000,
-      },
-    ];
-
-    samplePredictions.forEach((p: Prediction) => this.predictions.set(p.id, p));
-  }
+ 
 
   // Predictions
   getAllPredictions(): Prediction[] {

@@ -40,18 +40,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const prediction: Prediction = store.createPrediction({
-      title,
-      description,
-      currency,
-      deadline,
-      creator,
-    });
+    // const prediction: Prediction = store.createPrediction({
+    //   // title,
+    //   // description,
+    //   // currency,
+    //   // deadline,
+    //   // creator,
+    // });
 
     // Placeholder: Call smart contract
     await store.createPredictionContract(title, description, currency, deadline);
 
-    return NextResponse.json({ prediction }, { status: 201 });
+    return NextResponse.json({  }, { status: 201 });
   } catch (error: unknown) {
     const errorMessage: string = error instanceof Error ? error.message : 'Failed to create prediction';
     return NextResponse.json(
