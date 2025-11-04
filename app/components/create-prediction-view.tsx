@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { collection, doc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,79 +12,96 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar, DollarSign, FileText } from 'lucide-react';
 import { useWriteContract } from 'wagmi';
-import { base } from 'viem/chains';
+import { base, baseSepolia } from 'viem/chains';
 import { getAddress } from "viem";
-
-// import { parseEther } from 'viem';
 import { PREDICTION_MARKET_ADDRESS } from '@/contracts/config';
-import { Abi } from 'viem';
+import { Abi, parseEther } from 'viem';
 import PredictionMarketABI from '../../contracts/PredictionMarket.json';
+import { decodeEventLog } from 'viem';
+import { publicClient } from '../utils/publicClient';
+
 interface CreatePredictionViewProps {
   userAddress?: string;
 }
 
 export function CreatePredictionView({ userAddress }: CreatePredictionViewProps): React.JSX.Element {
-  const [title, setTitle] = useState<string>('');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  // const [currency, setCurrency] = useState<'USDC' | 'ETH'>('USDC');
+  const [deadline, setDeadline] = useState('');
+  const [maxCapacity, setMaxCapacity] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
 
-const TOKEN_ADDRESSES: Record<'ETH' | 'USDC', `0x${string}`> = {
-  ETH: '0x0000000000000000000000000000000000000000', // native token placeholder
-  USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bDA02913', // Base mainnet USDC
-};
+  const { writeContractAsync } = useWriteContract();
 
-  const [description, setDescription] = useState<string>('');
-  const [currency, setCurrency] = useState<'USDC' | 'ETH'>('USDC');
-  const [deadline, setDeadline] = useState<string>('');
-  const [maxCapacity, setMaxCapacity] = useState<string>('');
-  const [isCreating, setIsCreating] = useState<boolean>(false);
-  const { writeContractAsync } = useWriteContract(); // ✅ async version
+  const TOKEN_ADDRESSES: Record<'ETH' | 'USDC', `0x${string}`> = {
+    ETH: '0x0000000000000000000000000000000000000000',
+    USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bDA02913', // Base USDC
+  };
 
-  async function handleCreate(): Promise<void> {
-    if (!userAddress) {
-      alert('Please connect your wallet first');
-      return;
-    }
-
-    if (!title || !description || !deadline) {
-      alert('Please fill in all fields');
-      return;
-    }
+  async function handleCreate() {
+    if (!userAddress) return alert('Please connect your wallet first');
+    if (!title || !description || !deadline) return alert('Please fill in all fields');
 
     const deadlineTimestamp = Math.floor(new Date(deadline).getTime() / 1000);
-    if (deadlineTimestamp < Date.now() / 1000) {
-      alert('Deadline must be in the future');
-      return;
-    }
+    if (deadlineTimestamp < Date.now() / 1000) return alert('Deadline must be in the future');
 
     setIsCreating(true);
-
     try {
-      // --- 🧠 Step 1: Send TX from user wallet (user pays gas)
+      // ---- STEP 1: Send TX ----
       const txHash = await writeContractAsync({
-        address: PREDICTION_MARKET_ADDRESS,
-        abi: PredictionMarketABI.abi as Abi,
-        functionName: 'createPrediction',
-        args: [title, description, getAddress(TOKEN_ADDRESSES[currency]), BigInt(deadlineTimestamp), BigInt(maxCapacity || 0)],
-        chain: base,
-      });
+  address: PREDICTION_MARKET_ADDRESS,
+  abi: PredictionMarketABI.abi as Abi,
+  functionName: 'createPrediction',
+  args: [BigInt(deadlineTimestamp), BigInt(maxCapacity || 0)],
+  chain: baseSepolia,
+});
 
-      console.log('Transaction sent:', txHash);
-      alert(`✅ Prediction created! TX: ${txHash}`);
+      // Wait for TX to confirm and read event logs
+// ---- STEP 2: Wait for TX confirmation ----
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
 
-      // --- 🧠 Step 2: Save details to backend for display
-      const capacityValue = maxCapacity ? parseFloat(maxCapacity) : undefined;
-      await fetch('/api/predictions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
-          description,
-          currency,
-          deadline: deadlineTimestamp,
-          creator: userAddress,
-          maxCapacity: capacityValue,
-        }),
-      });
+      // ---- STEP 3: Decode Event Logs safely ----
+      const event = receipt.logs
+        .map((log) => {
+          try {
+            return decodeEventLog({
+              abi: PredictionMarketABI.abi as Abi,
+              data: log.data,
+              topics: log.topics,
+            }) as { eventName: string; args?: Record<string, any> };
+          } catch {
+            return null;
+          }
+        })
+        .find((e) => e && e.eventName === 'PredictionCreated');
 
+      // ---- STEP 4: Extract Prediction ID ----
+      const predictionId = event?.args?.predictionId
+        ? Number(event.args.predictionId)
+        : Date.now(); // fallback (shouldn’t happen)
+
+      console.log('🆔 Prediction ID:', predictionId);
+      console.log('✅ TX sent:', txHash);
+
+      // ---- STEP 2: Save off-chain copy in Firebase ----
+     const predictionRef = doc(collection(db, 'predictions')); // auto-ID
+await setDoc(predictionRef, {
+  title,
+  description, // optional, purely off-chain metadata
+  predictionId,
+  deadline: deadlineTimestamp,
+  maxCapacity: maxCapacity ? parseFloat(maxCapacity) : 0,
+  creator: userAddress,
+  txHash,
+  createdAt: Date.now(),
+  status: 'active',
+  totalYes: 0,
+  totalNo: 0,
+});
+
+
+      alert('✅ Prediction created and synced to Firebase!');
       setTitle('');
       setDescription('');
       setDeadline('');
@@ -104,20 +123,17 @@ const TOKEN_ADDRESSES: Record<'ETH' | 'USDC', `0x${string}`> = {
     >
       <Card className="backdrop-blur-sm bg-gradient-to-br from-blue-50/90 to-white/90 border-blue-200/50 shadow-lg">
         <CardHeader>
-          <CardTitle className="text-2xl font-bold text-gray-900">
-            Create New Prediction
-          </CardTitle>
+          <CardTitle className="text-2xl font-bold text-gray-900">Create New Prediction</CardTitle>
           <CardDescription className="text-gray-600">
             Launch a new prediction market for the community to bet on
           </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* 🎯 all your UI unchanged */}
+          {/* unchanged UI */}
           <div className="space-y-2">
             <Label htmlFor="title" className="flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              Event Title
+              <FileText className="w-4 h-4" /> Event Title
             </Label>
             <Input
               id="title"
@@ -140,26 +156,11 @@ const TOKEN_ADDRESSES: Record<'ETH' | 'USDC', `0x${string}`> = {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="currency" className="flex items-center gap-2">
-                <DollarSign className="w-4 h-4" />
-                Betting Currency
-              </Label>
-              <Select value={currency} onValueChange={(v) => setCurrency(v as 'USDC' | 'ETH')}>
-                <SelectTrigger id="currency" className="bg-white/80">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="USDC">USDC</SelectItem>
-                  <SelectItem value="ETH">ETH</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            
 
             <div className="space-y-2">
               <Label htmlFor="deadline" className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                Deadline
+                <Calendar className="w-4 h-4" /> Deadline
               </Label>
               <Input
                 id="deadline"
@@ -173,8 +174,7 @@ const TOKEN_ADDRESSES: Record<'ETH' | 'USDC', `0x${string}`> = {
 
           <div className="space-y-2">
             <Label htmlFor="maxCapacity" className="flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              Max Pool Capacity (Optional)
+              <DollarSign className="w-4 h-4" /> Max Pool Capacity (Optional)
             </Label>
             <Input
               id="maxCapacity"
@@ -190,14 +190,6 @@ const TOKEN_ADDRESSES: Record<'ETH' | 'USDC', `0x${string}`> = {
               Set a maximum betting pool size. When reached, no more bets can be placed.
             </p>
           </div>
-
-          {!userAddress && (
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-sm text-yellow-800">
-                Please connect your wallet to create a prediction
-              </p>
-            </div>
-          )}
 
           <Button
             onClick={handleCreate}

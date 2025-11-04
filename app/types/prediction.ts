@@ -1,5 +1,6 @@
 export interface Prediction {
-  id: string;
+  id: string;                 // Firestore doc ID
+  predictionId: number; 
   title: string;
   description: string;
   currency: 'USDC' | 'ETH';

@@ -184,7 +184,7 @@ export default function HomePage(): React.JSX.Element {
           </TabsList>
 
           {/* Tab Content */}
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="sync">
             <TabsContent value="markets" className="mt-0">
               <motion.div
                 key="markets"

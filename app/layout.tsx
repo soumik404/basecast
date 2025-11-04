@@ -13,6 +13,7 @@ export default function RootLayout({
         <html lang="en">
           <body>
             <Providers>
+              
       <FarcasterWrapper>
         {children}
       </FarcasterWrapper>

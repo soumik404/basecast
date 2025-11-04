@@ -1,152 +1,161 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Loader2, Search } from 'lucide-react';
 import { PredictionCard } from './prediction-card';
 import type { Prediction } from '../types/prediction';
-import { Loader2 } from 'lucide-react';
-// import { useReadContract, usePublicClient } from 'wagmi';
-import { publicClient } from "../utils/publicClient";
+import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
-import { getAddress } from 'viem';
-import PredictionMarketABI from '../../contracts/PredictionMarket.json';
-import { Abi } from 'viem';
-import { PREDICTION_MARKET_ADDRESS } from '@/contracts/config';
-
-interface MarketsViewProps {
+interface MarketViewProps {
   userAddress?: string;
 }
 
-export function MarketsView({ userAddress }: MarketsViewProps): React.JSX.Element {
+export function MarketsView({ userAddress }: MarketViewProps): React.JSX.Element {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [totalPredictions, setTotalPredictions] = useState<number | null>(null);
+  const [filtered, setFiltered] = useState<Prediction[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'active' | 'pending_verification' | 'resolved'>('active');
 
-  // const publicClient = usePublicClient();
-
+  // ✅ Load predictions from Firestore
   useEffect(() => {
-    async function fetchTotalPredictions() {
-      if (!publicClient) return;
-      try {
-        const total = await publicClient.readContract({
-          address: getAddress(PREDICTION_MARKET_ADDRESS),
-          abi: PredictionMarketABI.abi as Abi,
-          functionName: 'nextPredictionId', // 🔁 Make sure this matches your contract
-        });
-
-        console.log('Manual totalPredictions read:', total);
-        setTotalPredictions(Number(total));
-      } catch (err) {
-        console.error('Error reading nextPredictionId:', err);
-      }
-    }
-
-    fetchTotalPredictions();
-  }, [publicClient]);
-  // ✅ Fetch all predictions from the blockchain
-  useEffect(() => {
-    async function fetchPredictions() {
-      if (!publicClient || !totalPredictions) return;
-      try {
-        const total = Number(totalPredictions);
-        const fetched: Prediction[] = [];
-
-      for (let i = 1; i < total; i++) {
+   // Add a refetch function to reload predictions from Firestore
+async function fetchPredictions() {
+  setIsLoading(true);
   try {
-    const p: any = await publicClient.readContract({
-      address: getAddress(PREDICTION_MARKET_ADDRESS),
-      abi: PredictionMarketABI.abi as Abi,
-      functionName: 'getPrediction',
-      args: [BigInt(i)],
-    });
-
-    fetched.push({
-      id: i.toString(),
-      title: p.title,
-      description: p.description,
-      currency:
-        p.token === '0x0000000000000000000000000000000000000000'
-          ? 'ETH'
-          : 'USDC',
-      deadline: Number(p.deadline) * 1000,
-      totalYes: Number(p.totalYes),
-      totalNo: Number(p.totalNo),
-      status: 'active',
-      creator: p.creator ?? '0x0000000000000000000000000000000000000000', // ✅ added creator
-      createdAt: Date.now(), // fallback if contract doesn’t return timestamp
-    });
+    const q = query(collection(db, 'predictions'), orderBy('createdAt', 'desc'));
+    const snapshot = await getDocs(q);
+    const items: Prediction[] = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Prediction[];
+    setPredictions(items);
+    setFiltered(items);
   } catch (err) {
-    console.warn(`Skipping prediction ${i}:`, err);
+    console.error('Error loading predictions:', err);
+  } finally {
+    setIsLoading(false);
   }
 }
 
 
-        setPredictions(fetched);
-      } catch (err) {
-        console.error('Failed to fetch predictions:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
     fetchPredictions();
-  }, [publicClient, totalPredictions]);
+  }, []);
 
-  // ✅ Handle betting logic (unchanged)
-  async function handleBet(
-    predictionId: string,
-    choice: 'yes' | 'no',
-    amount: number
-  ): Promise<void> {
-    if (!userAddress) {
-      throw new Error('Please connect your wallet first');
+  // ✅ Filter when search or tab changes
+  useEffect(() => {
+    let filteredList = predictions;
+
+    if (activeTab) {
+      filteredList = filteredList.filter((p) => p.status === activeTab);
     }
 
-    const response: Response = await fetch('/api/bets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        predictionId,
-        user: userAddress,
-        amount,
-        choice,
-      }),
-    });
-
-    if (!response.ok) {
-      const error: { error: string } = await response.json();
-      throw new Error(error.error || 'Failed to place bet');
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      filteredList = filteredList.filter(
+        (p) =>
+          p.title.toLowerCase().includes(term) ||
+          p.description.toLowerCase().includes(term) ||
+          p.creator.toLowerCase().includes(term)
+      );
     }
 
-    // await fetchPredictions(); // refresh predictions count if needed
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-      </div>
-    );
-  }
-
-  if (predictions.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-gray-600 text-lg">No active predictions yet.</p>
-        <p className="text-gray-500 text-sm mt-2">Be the first to create one!</p>
-      </div>
-    );
-  }
+    setFiltered(filteredList);
+  }, [searchTerm, activeTab, predictions]);
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-      {predictions.map((prediction: Prediction) => (
-        <PredictionCard
-          key={prediction.id}
-          prediction={prediction}
-          onBet={handleBet}
-          userAddress={userAddress}
-        />
-      ))}
-    </div>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="max-w-5xl mx-auto p-4 space-y-6"
+    >
+      <Card className="backdrop-blur-sm bg-gradient-to-br from-blue-50/90 to-white/90 border-blue-200/50 shadow-md">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-2xl font-bold text-gray-900">Prediction Markets</CardTitle>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          {/* Search Input */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Input
+              placeholder="Search predictions..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 bg-white/80"
+            />
+          </div>
+
+          {/* Tabs */}
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+            <TabsList className="bg-blue-100/50">
+              <TabsTrigger value="active">Active</TabsTrigger>
+              <TabsTrigger value="pending_verification">Pending</TabsTrigger>
+              <TabsTrigger value="resolved">Resolved</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="active">
+              {isLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="animate-spin text-blue-500 w-6 h-6" />
+                </div>
+              ) : filtered.filter((p) => p.status === 'active').length === 0 ? (
+                <p className="text-gray-500 text-center py-6">No active predictions found.</p>
+              ) : (
+                <div className="grid gap-6 md:grid-cols-2">
+                  {filtered
+                    .filter((p) => p.status === 'active')
+                    .map((p) => (
+                      <PredictionCard key={p.id} prediction={p} userAddress={userAddress} />
+                    ))}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="pending_verification">
+              {isLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="animate-spin text-blue-500 w-6 h-6" />
+                </div>
+              ) : filtered.filter((p) => p.status === 'pending_verification').length === 0 ? (
+                <p className="text-gray-500 text-center py-6">No pending predictions.</p>
+              ) : (
+                <div className="grid gap-6 md:grid-cols-2">
+                  {filtered
+                    .filter((p) => p.status === 'pending_verification')
+                    .map((p) => (
+                      <PredictionCard key={p.id} prediction={p} userAddress={userAddress} />
+                    ))}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="resolved">
+              {isLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="animate-spin text-blue-500 w-6 h-6" />
+                </div>
+              ) : filtered.filter((p) => p.status === 'resolved').length === 0 ? (
+                <p className="text-gray-500 text-center py-6">No resolved predictions yet.</p>
+              ) : (
+                <div className="grid gap-6 md:grid-cols-2">
+                  {filtered
+                    .filter((p) => p.status === 'resolved')
+                    .map((p) => (
+                      <PredictionCard key={p.id} prediction={p} userAddress={userAddress} />
+                    ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }
