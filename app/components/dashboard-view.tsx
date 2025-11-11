@@ -6,8 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { Bet, Prediction } from '../types/prediction';
-import { TrendingUp, TrendingDown, Activity, DollarSign, Gift } from 'lucide-react';
-
+import { TrendingUp, Activity, DollarSign, Gift } from 'lucide-react';
+import { publicClient } from '../utils/publicClient';
+import { PREDICTION_MARKET_ADDRESS } from '@/contracts/config';
+import PredictionMarketABI from '@/contracts/PredictionMarket.json';
+import { parseEther } from 'viem';
+import { useWriteContract } from 'wagmi';
+import { waitForTransactionReceipt } from '@wagmi/core';
+import { config } from '@/lib/wagmi';
+import { showBaseToast } from '@/app/utils/toast';
 interface DashboardViewProps {
   userAddress?: string;
 }
@@ -18,64 +25,88 @@ interface BetWithPrediction extends Bet {
 
 export function DashboardView({ userAddress }: DashboardViewProps): React.JSX.Element {
   const [bets, setBets] = useState<BetWithPrediction[]>([]);
-  const [stats, setStats] = useState<{
-    totalBets: number;
-    activeBets: number;
-    totalStaked: number;
-    estimatedReturns: number;
-  }>({
+  const [stats, setStats] = useState({
     totalBets: 0,
     activeBets: 0,
     totalStaked: 0,
     estimatedReturns: 0,
   });
+  const { writeContractAsync } = useWriteContract();
 
   useEffect(() => {
-    if (userAddress) {
-      fetchUserBets();
-    }
+    if (userAddress) fetchUserBets();
   }, [userAddress]);
 
+  // ✅ Fetch user's bets from on-chain + off-chain
   async function fetchUserBets(): Promise<void> {
     if (!userAddress) return;
 
     try {
-      const response: Response = await fetch(`/api/bets?user=${userAddress}`);
-      const data: { bets: Bet[] } = await response.json();
+      const nextBetId = await publicClient.readContract({
+        address: PREDICTION_MARKET_ADDRESS,
+        abi: PredictionMarketABI.abi,
+        functionName: 'nextBetId',
+      });
 
-      // Fetch prediction details for each bet
-      const betsWithPredictions: BetWithPrediction[] = await Promise.all(
-        data.bets.map(async (bet: Bet): Promise<BetWithPrediction> => {
-          const predResponse: Response = await fetch(`/api/predictions/${bet.predictionId}`);
-          const predData: { prediction: Prediction } = await predResponse.json();
-          return { ...bet, prediction: predData.prediction };
-        })
-      );
+      const totalBets = Number(nextBetId);
+      const userBets: BetWithPrediction[] = [];
 
-      setBets(betsWithPredictions);
-      calculateStats(betsWithPredictions);
-    } catch (error: unknown) {
-      console.error('Failed to fetch user bets:', error);
+      for (let i = 1; i < totalBets; i++) {
+        const bet = (await publicClient.readContract({
+          address: PREDICTION_MARKET_ADDRESS,
+          abi: PredictionMarketABI.abi,
+          functionName: 'bets',
+          args: [BigInt(i)],
+        })) as [bigint, string, boolean, bigint, boolean];
+
+        const [predictionId, user, choice, amount, claimed] = bet;
+        if (user.toLowerCase() === userAddress.toLowerCase()) {
+          userBets.push({
+            id: String(i),
+            predictionId: String(Number(predictionId)),
+            user,
+            choice: choice ? 'yes' : 'no',
+            amount: Number(amount) / 1e18,
+            claimed,
+            timestamp: Date.now(),
+          });
+        }
+      }
+
+      const response = await fetch('/api/predictions/all');
+      const { predictions }: { predictions: Prediction[] } = await response.json();
+
+      const merged = userBets.map((b) => ({
+        ...b,
+        prediction: predictions.find((p) => Number(p.predictionId) === Number(b.predictionId)),
+      }));
+
+      setBets(merged);
+      calculateStats(merged);
+    } catch (error) {
+      console.error('❌ Failed to fetch user bets:', error);
     }
   }
 
+  // ✅ Calculate total stats
   function calculateStats(userBets: BetWithPrediction[]): void {
-    let totalStaked: number = 0;
-    let estimatedReturns: number = 0;
-    let activeBets: number = 0;
+    let totalStaked = 0;
+    let estimatedReturns = 0;
+    let activeBets = 0;
 
-    userBets.forEach((bet: BetWithPrediction) => {
+    userBets.forEach((bet) => {
       totalStaked += bet.amount;
-      
-      if (bet.prediction && bet.prediction.status === 'active') {
-        activeBets += 1;
-        const totalPool: number = bet.prediction.totalYes + bet.prediction.totalNo;
-        const winningPool: number = bet.choice === 'yes' ? bet.prediction.totalYes : bet.prediction.totalNo;
+      if (bet.prediction?.status === 'active') {
+        activeBets++;
+        const totalPool = (bet.prediction.totalYes || 0) + (bet.prediction.totalNo || 0);
+        const winningPool =
+          bet.choice === 'yes' ? bet.prediction.totalYes || 0 : bet.prediction.totalNo || 0;
+
         if (winningPool > 0) {
-          const potentialPayout: number = (bet.amount / winningPool) * totalPool;
-          estimatedReturns += potentialPayout;
+          const payout = (bet.amount / winningPool) * totalPool;
+          estimatedReturns += payout;
         }
-      } else if (bet.prediction && bet.prediction.status === 'resolved' && bet.payout && !bet.claimed) {
+      } else if (bet.prediction?.status === 'resolved' && bet.payout && !bet.claimed) {
         estimatedReturns += bet.payout;
       }
     });
@@ -88,27 +119,43 @@ export function DashboardView({ userAddress }: DashboardViewProps): React.JSX.El
     });
   }
 
+  // ✅ Claim winnings — using writeContractAsync + publicClient confirmation
   async function handleClaim(betId: string): Promise<void> {
     if (!userAddress) return;
 
     try {
-      const response: Response = await fetch('/api/bets/claim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ betId, userAddress }),
+      // 🧠 Show immediate feedback
+      showBaseToast('⏳ Preparing transaction... please confirm in your wallet.', 'info');
+
+      const hash = await writeContractAsync({
+        address: PREDICTION_MARKET_ADDRESS,
+        abi: PredictionMarketABI.abi,
+        functionName: 'claimReward', // ✅ matches your contract
+        args: [BigInt(betId)],
+        chain: config.chains[0],
       });
 
-      if (!response.ok) {
-        const error: { error: string } = await response.json();
-        throw new Error(error.error);
-      }
+      console.log('📡 Claim tx sent:', hash);
 
-      const data: { amount: number } = await response.json();
-      alert(`Successfully claimed ${data.amount} tokens!`);
-      fetchUserBets(); // Refresh bets
-    } catch (error: unknown) {
-      const errorMessage: string = error instanceof Error ? error.message : 'Failed to claim reward';
-      alert(errorMessage);
+      // ✅ Wait for confirmation using same client
+      await waitForTransactionReceipt(config, { hash });
+
+      // 🧠 Update Firestore off-chain
+      await fetch('/api/predictions/claimstore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ betId, userAddress, txHash: hash }),
+      });
+
+      showBaseToast('✅ Claimed successfully!', 'success');
+      fetchUserBets();
+    } catch (error: any) {
+      if (error?.name === 'UserRejectedRequestError') {
+        showBaseToast('❌ Transaction cancelled by user.', 'error');
+      } else {
+        console.error('❌ Claim failed:', error);
+        showBaseToast('❌ Claim failed: ' + (error?.shortMessage || error?.message || 'unknown error'), 'error');
+      }
     }
   }
 
@@ -126,7 +173,7 @@ export function DashboardView({ userAddress }: DashboardViewProps): React.JSX.El
 
   return (
     <div className="space-y-6">
-      {/* Stats Cards */}
+      {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
         <StatsCard
           title="Total Bets"
@@ -165,10 +212,11 @@ export function DashboardView({ userAddress }: DashboardViewProps): React.JSX.El
             <p className="text-gray-600 text-center py-8">No bets placed yet</p>
           ) : (
             <div className="space-y-3">
-              {bets.map((bet: BetWithPrediction) => {
-                const isWinner: boolean = bet.prediction?.status === 'resolved' && 
+              {bets.map((bet) => {
+                const isWinner =
+                  bet.prediction?.status === 'resolved' &&
                   bet.prediction?.result === bet.choice;
-                const canClaim: boolean = isWinner && bet.payout !== undefined && bet.payout > 0 && !bet.claimed;
+                const canClaim = isWinner && !bet.claimed;
 
                 return (
                   <motion.div
@@ -187,30 +235,23 @@ export function DashboardView({ userAddress }: DashboardViewProps): React.JSX.El
                             {bet.choice.toUpperCase()}
                           </Badge>
                           <Badge variant="outline">
-                            Staked: {bet.amount} {bet.prediction?.currency}
+                            Staked: {bet.amount} {bet.prediction?.currency || 'ETH'}
                           </Badge>
-                          {bet.prediction?.status === 'resolved' && bet.payout !== undefined && (
-                            <Badge className={isWinner ? 'bg-green-600 text-white' : 'bg-gray-400 text-white'}>
-                              {isWinner ? `Won: ${bet.payout.toFixed(2)} ${bet.prediction.currency}` : 'Lost'}
+                          {bet.prediction?.status === 'resolved' && (
+                            <Badge
+                              className={
+                                isWinner ? 'bg-green-600 text-white' : 'bg-gray-400 text-white'
+                              }
+                            >
+                              {isWinner ? 'Won' : 'Lost'}
                             </Badge>
                           )}
                           {bet.claimed && (
-                            <Badge className="bg-purple-500 text-white">
-                              ✓ Claimed
-                            </Badge>
+                            <Badge className="bg-purple-500 text-white">✓ Claimed</Badge>
                           )}
                         </div>
                       </div>
                       <div className="flex flex-col gap-2 items-end">
-                        {bet.prediction?.status === 'active' ? (
-                          <Badge className="bg-blue-500">Active</Badge>
-                        ) : bet.prediction?.status === 'resolved' ? (
-                          <Badge className={isWinner ? 'bg-green-500' : 'bg-red-500'}>
-                            {isWinner ? 'Won' : 'Lost'}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">Resolved</Badge>
-                        )}
                         {canClaim && (
                           <Button
                             onClick={() => handleClaim(bet.id)}
@@ -234,6 +275,7 @@ export function DashboardView({ userAddress }: DashboardViewProps): React.JSX.El
   );
 }
 
+// ✅ Reuse same StatsCard
 interface StatsCardProps {
   title: string;
   value: string;

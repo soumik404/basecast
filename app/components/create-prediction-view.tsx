@@ -9,16 +9,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar, DollarSign, FileText } from 'lucide-react';
 import { useWriteContract } from 'wagmi';
-import { base, baseSepolia } from 'viem/chains';
-import { getAddress } from "viem";
-import { PREDICTION_MARKET_ADDRESS } from '@/contracts/config';
+import { base } from 'viem/chains';
 import { Abi, parseEther } from 'viem';
 import PredictionMarketABI from '../../contracts/PredictionMarket.json';
 import { decodeEventLog } from 'viem';
+import { PREDICTION_MARKET_ADDRESS } from '@/contracts/config';
 import { publicClient } from '../utils/publicClient';
+import { showBaseToast } from '@/app/utils/toast';
+import { pl } from 'zod/v4/locales';
 
 interface CreatePredictionViewProps {
   userAddress?: string;
@@ -27,41 +27,49 @@ interface CreatePredictionViewProps {
 export function CreatePredictionView({ userAddress }: CreatePredictionViewProps): React.JSX.Element {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  // const [currency, setCurrency] = useState<'USDC' | 'ETH'>('USDC');
   const [deadline, setDeadline] = useState('');
   const [maxCapacity, setMaxCapacity] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
   const { writeContractAsync } = useWriteContract();
 
-  const TOKEN_ADDRESSES: Record<'ETH' | 'USDC', `0x${string}`> = {
-    ETH: '0x0000000000000000000000000000000000000000',
-    USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bDA02913', // Base USDC
-  };
-
   async function handleCreate() {
-    if (!userAddress) return alert('Please connect your wallet first');
-    if (!title || !description || !deadline) return alert('Please fill in all fields');
+    if (!userAddress) return showBaseToast('⚠️ Please connect your wallet first','error');
+    if (!title.trim() || !description.trim() || !deadline)
+      return showBaseToast('⚠️ Please fill in all fields', 'error');
 
     const deadlineTimestamp = Math.floor(new Date(deadline).getTime() / 1000);
-    if (deadlineTimestamp < Date.now() / 1000) return alert('Deadline must be in the future');
+    if (deadlineTimestamp < Date.now() / 1000)
+      return showBaseToast('⚠️ Deadline must be in the future', 'error');
+
+    // ✅ Validate max capacity
+    let capacityWei = 0n;
+    if (maxCapacity) {
+      const parsed = parseFloat(maxCapacity);
+      if (isNaN(parsed) || parsed < 0) {
+        return showBaseToast('❌ Invalid capacity. Please enter a positive number.', 'error');
+      }
+      if (parsed < 0.0001) {
+        return showBaseToast('⚠️ Minimum capacity should be at least 0.0001 ETH.', 'error');
+      }
+      capacityWei = parseEther(maxCapacity); // ✅ convert ETH → wei
+    }
 
     setIsCreating(true);
     try {
-      // ---- STEP 1: Send TX ----
+      console.log('🧠 Creating prediction on Base...');
       const txHash = await writeContractAsync({
-  address: PREDICTION_MARKET_ADDRESS,
-  abi: PredictionMarketABI.abi as Abi,
-  functionName: 'createPrediction',
-  args: [BigInt(deadlineTimestamp), BigInt(maxCapacity || 0)],
-  chain: baseSepolia,
-});
+        address: PREDICTION_MARKET_ADDRESS,
+        abi: PredictionMarketABI.abi as Abi,
+        functionName: 'createPrediction',
+        args: [BigInt(deadlineTimestamp), capacityWei],
+        chain: base,
+      });
 
-      // Wait for TX to confirm and read event logs
-// ---- STEP 2: Wait for TX confirmation ----
+      console.log('📡 Waiting for confirmation...');
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
 
-      // ---- STEP 3: Decode Event Logs safely ----
+      // Decode event to extract predictionId
       const event = receipt.logs
         .map((log) => {
           try {
@@ -76,39 +84,38 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
         })
         .find((e) => e && e.eventName === 'PredictionCreated');
 
-      // ---- STEP 4: Extract Prediction ID ----
       const predictionId = event?.args?.predictionId
         ? Number(event.args.predictionId)
-        : Date.now(); // fallback (shouldn’t happen)
+        : Date.now();
 
-      console.log('🆔 Prediction ID:', predictionId);
-      console.log('✅ TX sent:', txHash);
+      console.log('🆔 Prediction Created:', predictionId);
 
-      // ---- STEP 2: Save off-chain copy in Firebase ----
-     const predictionRef = doc(collection(db, 'predictions')); // auto-ID
-await setDoc(predictionRef, {
-  title,
-  description, // optional, purely off-chain metadata
-  predictionId,
-  deadline: deadlineTimestamp,
-  maxCapacity: maxCapacity ? parseFloat(maxCapacity) : 0,
-  creator: userAddress,
-  txHash,
-  createdAt: Date.now(),
-  status: 'active',
-  totalYes: 0,
-  totalNo: 0,
-});
+      // ✅ Save to Firestore
+      const predictionRef = doc(collection(db, 'predictions'));
+      await setDoc(predictionRef, {
+        title,
+        description,
+        predictionId,
+        deadline: deadlineTimestamp,
+        maxCapacity: parseFloat(maxCapacity) || 0,
+        creator: userAddress,
+        txHash,
+        createdAt: Date.now(),
+        status: 'active',
+        totalYes: 0,
+        totalNo: 0,
+      });
 
+      showBaseToast('✅ Prediction created successfully and synced to Firebase!', 'success');
 
-      alert('✅ Prediction created and synced to Firebase!');
       setTitle('');
       setDescription('');
       setDeadline('');
       setMaxCapacity('');
     } catch (error: any) {
       console.error('❌ Error creating prediction:', error);
-      alert(error.message || 'Failed to create prediction');
+      showBaseToast('❌ Transaction failed: ' + (error?.message || 'Unknown error'), 'error');
+      
     } finally {
       setIsCreating(false);
     }
@@ -130,7 +137,6 @@ await setDoc(predictionRef, {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* unchanged UI */}
           <div className="space-y-2">
             <Label htmlFor="title" className="flex items-center gap-2">
               <FileText className="w-4 h-4" /> Event Title
@@ -156,8 +162,6 @@ await setDoc(predictionRef, {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            
-
             <div className="space-y-2">
               <Label htmlFor="deadline" className="flex items-center gap-2">
                 <Calendar className="w-4 h-4" /> Deadline
@@ -179,15 +183,15 @@ await setDoc(predictionRef, {
             <Input
               id="maxCapacity"
               type="number"
-              placeholder="e.g., 100000 (leave empty for unlimited)"
+              placeholder="e.g., 10 (leave empty for unlimited)"
               value={maxCapacity}
               onChange={(e) => setMaxCapacity(e.target.value)}
               className="bg-white/80"
-              step="100"
+              step="0.01"
               min="0"
             />
             <p className="text-xs text-gray-500">
-              Set a maximum betting pool size. When reached, no more bets can be placed.
+              Example: Enter “10” for 10 ETH max. Leave empty for unlimited.
             </p>
           </div>
 
@@ -197,7 +201,7 @@ await setDoc(predictionRef, {
             className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white"
             size="lg"
           >
-            {isCreating ? 'Creating...' : 'Create Prediction'}
+            {isCreating ? '⏳ Creating...' : 'Create Prediction'}
           </Button>
         </CardContent>
       </Card>

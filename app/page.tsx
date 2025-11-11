@@ -56,51 +56,40 @@ export default function HomePage(): React.JSX.Element {
   const { address } = useAccount();
   const [activeTab, setActiveTab] = useState<string>('markets');
   const [isVerifier, setIsVerifier] = useState<boolean>(false);
-  const [isOwner, setIsOwner] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Check if connected address is verifier or owner
-  useEffect(() => {
-    const checkRole = async () => {
-      if (!address || !publicClient) {
-        setIsVerifier(false);
-        setIsOwner(false);
-        setLoading(false);
-        return;
-      }
+ const [isOwner, setIsOwner] = useState<boolean>(false);
 
-      try {
-        // Check if user is verifier
-        const verifierStatus = await publicClient.readContract({
-          address: PREDICTION_MARKET_ADDRESS,
-          abi: PredictionMarketABI.abi,
-          functionName: 'verifiers',
-          args: [address],
-        }) as boolean;
+useEffect(() => {
+  const checkOwner = async () => {
+    if (!address) return setIsOwner(false);
 
-        // Check if user is owner
-        const ownerAddress = await publicClient.readContract({
-          address: PREDICTION_MARKET_ADDRESS,
-          abi: PredictionMarketABI.abi,
-          functionName: 'owner',
-        }) as string;
+    const envOwner = process.env.NEXT_PUBLIC_OWNER_ADDRESS?.toLowerCase();
+    if (envOwner) {
+      setIsOwner(address.toLowerCase() === envOwner);
+      return;
+    }
 
-        setIsVerifier(verifierStatus);
-        setIsOwner(ownerAddress.toLowerCase() === address.toLowerCase());
-      } catch (error) {
-        console.error('Error checking role:', error);
-        setIsVerifier(false);
-        setIsOwner(false);
-      } finally {
-        setLoading(false);
-      }
-    };
+    // fallback to reading from contract if no env set
+    try {
+      const owner = await publicClient.readContract({
+        address: PREDICTION_MARKET_ADDRESS,
+        abi: PredictionMarketABI.abi,
+        functionName: 'owner',
+      }) as string;
+      setIsOwner(owner.toLowerCase() === address.toLowerCase());
+    } catch (err) {
+      console.error('Owner check failed:', err);
+      setIsOwner(false);
+    }
+  };
 
-    checkRole();
-  }, [address, publicClient]);
+  checkOwner();
+}, [address]);
 
   // Show verifier tab only if user is verifier or owner
-  const showVerifierTab = isVerifier || isOwner;
+  const showVerifierTab = isOwner;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-100">

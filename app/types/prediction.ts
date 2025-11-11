@@ -18,6 +18,9 @@ export interface Prediction {
   rejectionReason?: string; // If rejected, why?
   creator: string;
   createdAt: number;
+   resolved?: boolean;
+   onChainResolved?: boolean;
+  verified?: boolean;
 }
 
 export interface Bet {

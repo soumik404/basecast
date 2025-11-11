@@ -4,8 +4,8 @@ import { coinbaseWallet } from 'wagmi/connectors';
 
 // Determine which chain to use based on environment
 const isDevelopment = process.env.NODE_ENV === 'development';
-const targetChain = isDevelopment ? baseSepolia : base;
-
+const targetChain = isDevelopment ? base : base;
+const rpcUrl = 'https://base-mainnet.g.alchemy.com/v2/afatatafqnGXDC6UU4l-YmEU4NvwJ015';
 export const wagmiConfig = createConfig({
   chains: [targetChain],
   connectors: [
@@ -19,8 +19,7 @@ export const wagmiConfig = createConfig({
   }),
   ssr: true,
   transports: {
-    [base.id]: http(),
-    [baseSepolia.id]: http(),
+    [base.id]: http('https://base-mainnet.g.alchemy.com/v2/afatatafqnGXDC6UU4l-YmEU4NvwJ015'),
   },
 });
 

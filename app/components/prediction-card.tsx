@@ -13,12 +13,15 @@ import { writeContract } from 'wagmi/actions';
 import { readContract, readContracts, waitForTransactionReceipt } from '@wagmi/core';
 import { parseEther } from 'viem';
 import PredictionMarketABI from '../../contracts/PredictionMarket.json';
-import { baseSepolia } from 'viem/chains';
+import { base } from 'viem/chains';
 import { PREDICTION_MARKET_ADDRESS } from '../../contracts/config';
 import { config } from '../../lib/wagmi'; 
 import {  useWriteContract } from 'wagmi';
 import { useReadContract } from "wagmi";
 import { publicClient } from '../utils/publicClient';
+import { no } from 'zod/v4/locales';
+import { showBaseToast } from '@/app/utils/toast';
+// import { walletClient, publicClient, baseSepolia } from '../utils/publicClient';
 
 
 interface PredictionCardProps {
@@ -48,7 +51,8 @@ const [userBetChoice, setUserBetChoice] = useState<'yes' | 'no' | undefined>(und
   const isCreator: boolean = userAddress ? prediction.creator.toLowerCase() === userAddress.toLowerCase() : false;
 
   const timeLeft: string = getTimeLeft(prediction.deadline);
-
+const notconnect: boolean = !userAddress;
+console.log("User Address in PredictionCard:", notconnect ? "Not connected" : userAddress);
 async function getUserBetForPrediction(userAddress: string, predictionId: number) {
   const nextBetId = await publicClient.readContract({
     address: PREDICTION_MARKET_ADDRESS,
@@ -57,7 +61,7 @@ async function getUserBetForPrediction(userAddress: string, predictionId: number
   });
 
   const totalBets = Number(nextBetId) - 1;
-  console.log(`🔍 Scanning ${totalBets} bets for user ${userAddress}`);
+  // console.log(`🔍 Scanning ${totalBets} bets for user ${userAddress}`);
 
   for (let i = 1; i <= totalBets; i++) {
     // ✅ Tell TypeScript what we expect back
@@ -68,14 +72,14 @@ async function getUserBetForPrediction(userAddress: string, predictionId: number
       args: [BigInt(i)],
     })) as [bigint, string, boolean, bigint, boolean]; // [predictionId, user, choice, amount, claimed]
 
-    console.log(`📦 Raw bet #${i}:`, bet);
+    // console.log(`📦 Raw bet #${i}:`, bet);
 
     // 🧠 Extract data from the tuple
     const [predIdBig, user, choice, amount, claimed] = bet;
     const predId = Number(predIdBig);
 
     // Log everything clearly
-    console.log(`🔎 Bet #${i} → predictionId=${predId}, user=${user}, choice=${choice}`);
+    // console.log(`🔎 Bet #${i} → predictionId=${predId}, user=${user}, choice=${choice}`);
 
     // ✅ Check for user + prediction match
     if (
@@ -83,12 +87,12 @@ async function getUserBetForPrediction(userAddress: string, predictionId: number
       user.toLowerCase() === userAddress.toLowerCase() &&
       predId === predictionId
     ) {
-      console.log(`✅ Found match! Prediction ${predictionId}, Choice=${choice ? 'YES' : 'NO'}`);
+      // console.log(`✅ Found match! Prediction ${predictionId}, Choice=${choice ? 'YES' : 'NO'}`);
       return { choice, amount };
     }
   }
 
-  console.log(`ℹ️ No bet found for user ${userAddress} on prediction ${predictionId}`);
+  // console.log(`ℹ️ No bet found for user ${userAddress} on prediction ${predictionId}`);
   return null;
 }
 
@@ -153,99 +157,116 @@ useEffect(() => {
 async function handleBet(predictionId: bigint, choice: 'yes' | 'no', betAmount: string): Promise<void> {
   if (!userAddress || !betAmount || isPlacingBet) return;
 
-  console.log("💡 Checking if user already bet...");
-  
-  // ✅ Fetch existing bet for this prediction
-  const existingBet = await getUserBetForPrediction(userAddress, Number(predictionId));
-
-  if (existingBet) {
-    const previousChoice = existingBet.choice ? 'yes' : 'no';
-    console.log(`⚠️ User already bet "${previousChoice}" on this prediction`);
-    
-    if (previousChoice !== choice) {
-      alert(`You already bet "${previousChoice.toUpperCase()}" on this prediction! You can't change sides.`);
-      return;
-    } else {
-      alert(`You already placed a "${previousChoice.toUpperCase()}" bet for this prediction.`);
-      return;
-    }
-  }
-
-  console.log(`💡 Placing new bet: Prediction ID=${predictionId}, Choice=${choice}, Amount=${betAmount}`);
-  setUserBetChoice(choice);
-
-  const amount = parseFloat(betAmount);
-  if (isNaN(amount) || amount <= 0) {
-    alert('Enter a valid amount');
-    return;
-  }
-
-  setIsPlacingBet(true);
+  setIsPlacingBet(true); // disable button instantly
+  let message: HTMLDivElement | null = null; // toast reference
 
   try {
-    console.log("📡 Sending bet transaction...");
+    console.log("💡 Checking if user already bet...");
+    const existingBet = await getUserBetForPrediction(userAddress, Number(predictionId));
 
-    // 🧠 Call contract
+    if (existingBet) {
+      const previousChoice = existingBet.choice ? 'yes' : 'no';
+      showBaseToast(`You already bet "${previousChoice.toUpperCase()}" on this prediction.`, 'error');
+      return;
+    }
+
+    const amount = parseFloat(betAmount);
+    if (isNaN(amount) || amount <= 0) {
+      showBaseToast('Enter a valid amount', 'error');
+      return;
+    }
+
+    // 🧠 Create toast element (immediate feedback)
+    message = document.createElement('div');
+    message.innerText = "⏳ Preparing transaction... please wait for your wallet popup";
+    message.style.position = 'fixed';
+    message.style.top = '20px';
+    message.style.right = '20px';
+    message.style.padding = '10px 15px';
+    message.style.background = '#2563eb';
+    message.style.color = 'white';
+    message.style.borderRadius = '8px';
+    message.style.zIndex = '9999';
+    message.setAttribute('role', 'tx-toast');
+    document.body.appendChild(message);
+
+    // 🚀 Send transaction
     const hash = await writeContractAsync({
       address: PREDICTION_MARKET_ADDRESS,
       abi: PredictionMarketABI.abi,
       functionName: 'placeBet',
       args: [predictionId, choice === 'yes'],
       value: parseEther(betAmount),
-      chain: baseSepolia,
+      chain: base,
+      gas: 400000n,
     });
 
     console.log('✅ Transaction sent:', hash);
 
+    showBaseToast('✅ Transaction sent! Waiting for confirmation...', 'info');
+
     // 🕐 Wait for confirmation
     await waitForTransactionReceipt(config, { hash });
 
-    alert('✅ Bet placed successfully!');
+    showBaseToast('✅ Bet placed successfully!', 'success');
     console.log('🧾 Bet confirmed on-chain:', hash);
 
-    // 🧠 Save bet to off-chain DB (optional Firestore)
     await saveBetOffchain(predictionId.toString(), userAddress, choice, parseFloat(betAmount));
 
-    // ✅ Update local state
     setBetAmount('');
     setSelectedChoice(null);
     setPotentialPayout(0);
     setUserBetChoice(choice);
-
   } catch (err: any) {
     console.error('❌ Bet failed:', err);
-    alert('❌ Bet failed: ' + (err?.shortMessage || err?.message || 'Transaction reverted'));
+
+    // 🧹 Handle user rejection gracefully
+    if (err?.name === 'UserRejectedRequestError' || err?.message?.includes('User rejected')) {
+      showBaseToast('❌ You canceled the transaction.', 'error');
+    } else {
+      showBaseToast('❌ Bet failed: ' + (err?.shortMessage || err?.message || 'Transaction reverted'),  'error');
+    }
   } finally {
+    // 🧹 Always cleanup
     setIsPlacingBet(false);
+    if (message && document.body.contains(message)) {
+      document.body.removeChild(message);
+    }
   }
 }
 
 
 
 
-  async function handleProposeResult(result: 'yes' | 'no'): Promise<void> {
+
+
+async function handleProposeResult(result: 'yes' | 'no'): Promise<void> {
   if (!userAddress || !isCreator) return;
+
   const confirm = window.confirm(`Propose "${result.toUpperCase()}" as result?`);
   if (!confirm) return;
 
   try {
-    const hash = await writeContractAsync({
-      address: PREDICTION_MARKET_ADDRESS,
-      abi: PredictionMarketABI.abi,
-      functionName: 'proposeResult',
-      args: [BigInt(prediction.predictionId), result === 'yes'],
-      chain: baseSepolia,
+    const res = await fetch('/api/predictions/propose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        predictionId: prediction.predictionId,
+        proposedResult: result,
+        creator: userAddress,
+      }),
     });
 
-    console.log('✅ Proposal sent:', hash);
-    await waitForTransactionReceipt(config,{ hash });
-    alert(`Result proposed as "${result.toUpperCase()}"`);
-    window.location.reload();
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to propose result');
+
+    showBaseToast(`✅ Proposed "${result.toUpperCase()}" successfully. Waiting for verifier.`, 'success');
   } catch (err: any) {
     console.error('❌ Proposal failed:', err);
-    alert('❌ Proposal failed: ' + (err?.shortMessage || err?.message));
+    showBaseToast('❌ Failed: ' + err.message, 'error');
   }
 }
+
 
 
   return (
@@ -381,6 +402,11 @@ async function handleBet(predictionId: bigint, choice: 'yes' | 'no', betAmount: 
 
           {/* Betting Interface */}
           {/* Betting Interface */}
+           {notconnect && (
+        <div className="p-2 bg-orange-50 border border-orange-200 rounded text-sm text-orange-700">
+          ⚠️ Please connect your wallet to place a bet.
+        </div>
+      )}
 {userAddress &&
   !isResolved &&
   !isPendingVerification &&
@@ -425,6 +451,7 @@ async function handleBet(predictionId: bigint, choice: 'yes' | 'no', betAmount: 
           ⚠️ This market is at full capacity. No more bets can be placed.
         </div>
       )}
+     
 
       {userBetChoice && (
         <div className="text-sm text-gray-700 mb-2">
@@ -474,9 +501,11 @@ async function handleBet(predictionId: bigint, choice: 'yes' | 'no', betAmount: 
       </div>
     </div>
   ) : (
+    
+
     // 🧠 When expired or resolved
     <div className="pt-4 border-t border-blue-100 text-center text-gray-500 text-sm">
-      ⚠️ Betting closed — prediction expired or resolved.
+      ⚠️ Betting closed, prediction expired or resolved.
     </div>
   )}
 

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import '@coinbase/onchainkit/styles.css';
 import './globals.css';
 import { Providers } from './providers';
+import { Toaster } from 'sonner';
 import FarcasterWrapper from "./components/FarcasterWrapper";
 
 export default function RootLayout({
@@ -16,6 +17,13 @@ export default function RootLayout({
               
       <FarcasterWrapper>
         {children}
+         <Toaster
+          position="top-right"
+          richColors
+          closeButton
+          expand
+          duration={4000}
+        />
       </FarcasterWrapper>
       </Providers>
           </body>

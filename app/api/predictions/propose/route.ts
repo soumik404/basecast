@@ -1,51 +1,26 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import { store } from '@/lib/store';
+import { db } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function POST(req: Request) {
   try {
-    const body = await request.json();
-    const { predictionId, result, proposerAddress } = body;
+    const { predictionId, proposedResult, creator } = await req.json();
 
-    if (!predictionId || !result || !proposerAddress) {
-      return NextResponse.json(
-        { error: 'Missing required fields: predictionId, result, proposerAddress' },
-        { status: 400 }
-      );
-    }
+    if (!predictionId || !creator || !proposedResult)
+      return new Response(JSON.stringify({ error: 'Missing data' }), { status: 400 });
 
-    if (result !== 'yes' && result !== 'no') {
-      return NextResponse.json(
-        { error: 'Result must be "yes" or "no"' },
-        { status: 400 }
-      );
-    }
-
-    const success: boolean = store.proposeResult(predictionId, result, proposerAddress);
-
-    if (!success) {
-      return NextResponse.json(
-        { 
-          error: 'Failed to propose result. Make sure:\n' +
-                 '- You are the creator of this prediction\n' +
-                 '- The prediction is active\n' +
-                 '- The deadline has passed'
-        },
-        { status: 403 }
-      );
-    }
-
-    const prediction = store.getPrediction(predictionId);
-    return NextResponse.json({ 
-      success: true, 
-      prediction,
-      message: 'Result proposed successfully. Waiting for verifier confirmation.'
+    await addDoc(collection(db, 'resultProposals'), {
+      predictionId,
+      proposedResult,
+      creator,
+      createdAt: serverTimestamp(),
+      verified: false,
+      verifiedBy: null,
+      onChainResolved: false,
     });
-  } catch (error: unknown) {
-    console.error('Error proposing result:', error);
-    return NextResponse.json(
-      { error: 'Failed to propose result' },
-      { status: 500 }
-    );
+
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  } catch (err: any) {
+    console.error('Error saving proposal:', err);
+    return new Response(JSON.stringify({ error: 'Failed to save proposal' }), { status: 500 });
   }
 }
