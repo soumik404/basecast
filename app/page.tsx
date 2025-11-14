@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { WalletDefault } from '@coinbase/onchainkit/wallet';
 import { useAccount } from 'wagmi';
+import { LuckyWheelOverlay } from './components/lucky-wheel-overlay';
 import { MarketsView } from './components/markets-view';
 import { CreatePredictionView } from './components/create-prediction-view';
 import { DashboardView } from './components/dashboard-view';
@@ -15,6 +16,7 @@ import { sdk } from "@farcaster/miniapp-sdk";
 import { useContract } from '@/hooks/useContract';
 import { usePublicClient } from 'wagmi';
 import { publicClient } from "../app/utils/publicClient";
+import FAQSection from "./components/FAQsection";
 
 import PredictionMarketABI from '@/contracts/PredictionMarket.json';
 import { PREDICTION_MARKET_ADDRESS } from '@/contracts/config';
@@ -182,14 +184,14 @@ useEffect(() => {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <div className="mb-6">
-                  <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                {/* <div className="mb-6">
+                  {/* <h2 className="text-3xl font-bold text-gray-900 mb-2">
                     Active Markets
                   </h2>
                   <p className="text-gray-600">
                     Browse and bet on active prediction markets
-                  </p>
-                </div>
+                  </p> */}
+                {/* </div> */} 
                 <MarketsView userAddress={address} />
               </motion.div>
             </TabsContent>
@@ -202,14 +204,14 @@ useEffect(() => {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <div className="mb-6">
+                {/* <div className="mb-6">
                   <h2 className="text-3xl font-bold text-gray-900 mb-2">
                     Create Prediction
                   </h2>
                   <p className="text-gray-600">
                     Launch a new prediction market for the community
                   </p>
-                </div>
+                </div> */}
                 <CreatePredictionView userAddress={address} />
               </motion.div>
             </TabsContent>
@@ -222,7 +224,7 @@ useEffect(() => {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <div className="mb-6">
+                <div className="grid mb-6 items-center justify-center">
                   <h2 className="text-3xl font-bold text-gray-900 mb-2">
                     Your Dashboard
                   </h2>
@@ -242,14 +244,14 @@ useEffect(() => {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <div className="mb-6">
+                {/* <div className="grid mb-6 items-center justify-center">
                   <h2 className="text-3xl font-bold text-gray-900 mb-2">
                     Leaderboard
                   </h2>
                   <p className="text-gray-600">
                     Top performers in prediction markets
                   </p>
-                </div>
+                </div> */}
                 <LeaderboardView />
               </motion.div>
             </TabsContent>
@@ -283,7 +285,7 @@ useEffect(() => {
           </AnimatePresence>
         </Tabs>
       </main>
-
+<FAQSection />
       {/* Footer */}
       <footer className="mt-16 py-8 border-t border-blue-200/50 backdrop-blur-sm bg-white/50">
         <div className="container mx-auto px-4 text-center text-gray-600">
@@ -292,6 +294,8 @@ useEffect(() => {
           </p>
         </div>
       </footer>
+       <LuckyWheelOverlay />
+        
     </div>
   );
 }
