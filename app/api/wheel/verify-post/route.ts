@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 
-const APP_URL = 'stay based';
+const APP_URL = 'https://basecast.vercel.app';
 
 // Helper function: Extracts post ID from a Base App or Farcaster URL
 function extractPostId(url: string): string | null {
