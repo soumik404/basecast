@@ -106,14 +106,13 @@ export function CreatePredictionView({ userAddress }: CreatePredictionViewProps)
         totalNo: 0,
       });
 
-      showBaseToast('✅ Prediction created successfully and synced to Firebase!', 'success');
+      showBaseToast('✅ Prediction created successfully', 'success');
 
       setTitle('');
       setDescription('');
       setDeadline('');
       setMaxCapacity('');
     } catch (error: any) {
-      console.error('❌ Error creating prediction:', error);
       showBaseToast('❌ Transaction failed: ' + (error?.message || 'Unknown error'), 'error');
       
     } finally {

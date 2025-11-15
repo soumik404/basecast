@@ -69,7 +69,6 @@ export function VerifierView({ userAddress }: VerifierViewProps): React.JSX.Elem
       setIsVerifier(user === owner);
       console.log(`👑 Owner: ${owner} | 👤 User: ${user} | IsVerifier: ${user === owner}`);
     } catch (error) {
-      console.error('❌ Owner check failed:', error);
       setIsVerifier(false);
     }
   }

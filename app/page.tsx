@@ -82,7 +82,6 @@ useEffect(() => {
       }) as string;
       setIsOwner(owner.toLowerCase() === address.toLowerCase());
     } catch (err) {
-      console.error('Owner check failed:', err);
       setIsOwner(false);
     }
   };

@@ -52,7 +52,6 @@ const [userBetChoice, setUserBetChoice] = useState<'yes' | 'no' | undefined>(und
 
   const timeLeft: string = getTimeLeft(prediction.deadline);
 const notconnect: boolean = !userAddress;
-console.log("User Address in PredictionCard:", notconnect ? "Not connected" : userAddress);
 async function getUserBetForPrediction(userAddress: string, predictionId: number) {
   const nextBetId = await publicClient.readContract({
     address: PREDICTION_MARKET_ADDRESS,
@@ -109,7 +108,6 @@ useEffect(() => {
       if (result) {
         const choice = result.choice ? 'yes' : 'no';
         setUserBetChoice(choice);
-        console.log(`💾 Loaded user bet choice: ${choice}`);
       } else {
         setUserBetChoice(undefined);
       }
@@ -132,9 +130,9 @@ useEffect(() => {
 
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to save bet');
-    console.log('✅ Bet saved to Firestore:', data);
+    console.log('✅ Bet Succesfull');
   } catch (err) {
-    console.error('❌ Firestore save error:', err);
+    console.error('❌ Error bet');
   }
 }
 
