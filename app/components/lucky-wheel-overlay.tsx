@@ -104,7 +104,9 @@ const [forcedIndex, setForcedIndex] = useState<number | null>(null);
     }
     setPosting(true);
     try {
-      const postText = `🎰 I’m spinning the Lucky Wheel on BaseCast! Try your luck: ${APP_URL}`;
+      const postText = `I spun the BaseCast wheel and won!  
+You can spin and do predictions to earn more.  
+Tap here and try 👇 ${APP_URL}`;
       composeCast({
   text: postText,
   embeds: [window.location.href]
